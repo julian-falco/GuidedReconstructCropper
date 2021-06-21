@@ -406,3 +406,4 @@ for i in range(sectionNum):
                             domainOrigins[i][0], domainOrigins[i][1])
 
 print("\nCompleted successfully!")
+input("\nPress enter to exit")

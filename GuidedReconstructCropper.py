@@ -216,194 +216,198 @@ def newTraceFile(fileName, newFileName, xshift, yshift, domainIndex):
 
 
 # BEGINNING OF MAIN: gather inputs
-
-seriesName = input("What is the name of this series?: ")
-sectionNum = int(input("What is the number of sections in this series? (make sure to include the 0 section): "))
-obj = input("What is the name of the object on which the crop should be centered?: ")
-rad = float(input("What is the cropping radius in microns?: "))
-pixPerMic = float(input("What is the number of pixels per micron in this series?: "))
-oldLocation = input("What is the file path for the folder containing the original series?: ")
-newLocation = input("What is the file path for the empty folder to contain the new series?: ")
-
-# requires that the two folder locations be different so that data is not overridden
-while oldLocation == newLocation:
-    print("The file path for the original series and the new series cannot be the same")
+try:
+    seriesName = input("What is the name of this series?: ")
+    sectionNum = int(input("What is the number of sections in this series? (make sure to include the 0 section): "))
+    obj = input("What is the name of the object on which the crop should be centered?: ")
+    rad = float(input("What is the cropping radius in microns?: "))
+    pixPerMic = float(input("What is the number of pixels per micron in this series?: "))
     oldLocation = input("What is the file path for the folder containing the original series?: ")
     newLocation = input("What is the file path for the empty folder to contain the new series?: ")
 
-
-
-# Find the center points for the object and fill in missing centers
-
-print("Identifying center points for the object...")
-
-centers = []
-
-for i in range(sectionNum):
-    centers.append(findCenter(oldLocation + '\\' + seriesName + "." + str(i), obj))
-
-centers = fillInCenters(centers)
-
-print("Completed successfully!")
+    # requires that the two folder locations be different so that data is not overridden
+    while oldLocation == newLocation:
+        print("The file path for the original series and the new series cannot be the same")
+        oldLocation = input("What is the file path for the folder containing the original series?: ")
+        newLocation = input("What is the file path for the empty folder to contain the new series?: ")
 
 
 
-# Find the domain origins for each of the sections and store them in a text file
+    # Find the center points for the object and fill in missing centers
 
-print("Identifying and storing domain origins...")
+    print("Identifying center points for the object...")
 
-domainOrigins = []
+    centers = []
 
-for i in range(sectionNum):
-    domainOrigins.append(getDomainOrigin(oldLocation + '\\' + seriesName + "." + str(i)))
+    for i in range(sectionNum):
+        centers.append(findCenter(oldLocation + '\\' + seriesName + "." + str(i), obj))
 
-domainOriginsFile = open(newLocation + "\\ORIGINAL_DOMAIN_ORIGINS.txt", "w")
+    centers = fillInCenters(centers)
 
-for i in range(sectionNum):
-    domainOriginsFile.write(str(domainOrigins[i][0]) + " "
-                            + str(domainOrigins[i][1]) + "\n")
-domainOriginsFile.close()
-
-print("ORIGINAL_DOMAIN_ORIGINS.txt has been stored in the new folder.\nDo NOT delete this file.")
-
-print("Completed successfully!")
+    print("Completed successfully!")
 
 
 
-# Create new trace files with shift domain origins
+    # Find the domain origins for each of the sections and store them in a text file
 
-print("Creating new trace files...")
+    print("Identifying and storing domain origins...")
 
-for i in range(sectionNum):
-    
-    # shift the domain origins to bottom left corner of planned crop
-    shift = (centers[i][0] + domainOrigins[i][0] - rad,
-             centers[i][1] + domainOrigins[i][1] - rad)
-    
-    # create the new trace file (invert the shifts so the picture moves in the correct direction)
-    newTraceFile(oldLocation + "\\" + seriesName + "." + str(i),
-                 newLocation + "\\" + seriesName + "." + str(i),
-                 shift[0] * -1,
-                 shift[1] * -1,
-                 domainOrigins[i][2])
-
-# Copy series file
-    
-print("Copying original series file...")
-
-oldSeriesFile = open(oldLocation + "\\" + seriesName + ".ser", "r")
-newSeriesFile = open(newLocation + "\\" + seriesName + ".ser", "w")
-
-for line in oldSeriesFile.readlines():
-    newSeriesFile.write(line + "\n")
-
-oldSeriesFile.close()
-newSeriesFile.close()
-
-print("Completed successfully!")
-
-
-
-# Crop each image
-
-print("Cropping images around centers...\n")
-
-for i in range(sectionNum):
-    
-    if not centers[i] == (0, 0):
-        
-        # set up correct file name (there's probably a better way to do this)
-        if i < 10:
-            fileName = seriesName + "." + "00" + str(i) + ".tif"
-        elif i < 100:
-            fileName = seriesName + "." + "0" + str(i) + ".tif"
-        elif i >= 100:
-            fileName = seriesName + "." + str(i) + ".tif"
-
-        print("Working on " + fileName + "...")
-        
-        # open original image with cv2 (PIL cannot handle large images)
-        img = cv2.imread(oldLocation + "\\" + fileName)
-        
-        # get the cropping radius in pixels
-        pixRad = rad * pixPerMic
-        
-        # get the center coordinates in pixels
-        pixx = (centers[i][0] + domainOrigins[i][0]) * pixPerMic
-        pixy = img.shape[0] - (centers[i][1] + domainOrigins[i][1]) * pixPerMic
-        
-        # get the pixel coordinates for each corner of the crop
-        left = int(pixx - pixRad)
-        right = int(pixx + pixRad)
-        top = int(pixy - pixRad)
-        bottom = int(pixy + pixRad)
-
-        # if crop exceeds image boundary, cut it off
-        if left < 0: left = 0
-        if right >= img.shape[1]: right = img.shape[1]-1
-        if top < 0: top = 0
-        if bottom >= img.shape[0]: bottom = img.shape[0]-1
-
-        # crop the photo (numpy slice)
-        cropped = img[top:bottom, left:right, 0]
-    
-        # cv2 can only save compressed TIF, so convert array to PIL object and save as uncompressed TIF
-        img = Image.fromarray(cropped)
-        img.save(newLocation + "\\" + fileName)
-        
-        print("Saved!\n")
-
-print("Cropping program has run succesfully!")
-
-
-
-# Revert trace file domain origins to original values
-
-input("WARNING: This will rewrite the trace files in this folder. Backing up your files is advised.\n" +
-      "Press enter to continue.\n")
-
-seriesName = input("What is the name of this series?: ")
-sectionNum = int(input("What is the number of sections in this series? (make sure to include the 0 section): "))
-croppedLocation = input("What is the file path for the folder with the cropped trace files?: ")
-
-# check if user has domain origin data
-hasData = ""
-while hasData != "y" and hasData != "n":
-    hasData = input("Do you have the ORIGINAL_DOMAIN_ORIGINS.txt file? (y/n): ")
-
-# if user does have data...
-if hasData == "y":
-
-    #open text file
-    originalOriginsFile = open(croppedLocation + "\\ORIGINAL_DOMAIN_ORIGINS.TXT")
-
-    # read data from text file into list
     domainOrigins = []
-    for line in originalOriginsFile.readlines():
-        coords = line.split()
-        domainOrigins.append([float(coords[0]), float(coords[1])])
 
-    # close test file
-    originalOriginsFile.close()
-
-# if user does not have data, get it from the original trace files
-elif hasData == "n":
-
-    oldLocation = input("What is the file path for the uncropped series?: ")
-
-    print("\nIdentifying domain origins...")
-
-    # gather domain origins from trace files
-    domainOrigins = []
     for i in range(sectionNum):
         domainOrigins.append(getDomainOrigin(oldLocation + '\\' + seriesName + "." + str(i)))
 
-print("\nRestoring trace files to original domain...")
+    domainOriginsFile = open(newLocation + "\\ORIGINAL_DOMAIN_ORIGINS.txt", "w")
 
-# rewrite domain origins
-for i in range(sectionNum):
-        restoreDomainOrigin(croppedLocation + '\\' + seriesName + "." + str(i),
-                            domainOrigins[i][0], domainOrigins[i][1])
+    for i in range(sectionNum):
+        domainOriginsFile.write(str(domainOrigins[i][0]) + " "
+                                + str(domainOrigins[i][1]) + "\n")
+    domainOriginsFile.close()
 
-print("\nCompleted successfully!")
+    print("ORIGINAL_DOMAIN_ORIGINS.txt has been stored in the new folder.\nDo NOT delete this file.")
+
+    print("Completed successfully!")
+
+
+
+    # Create new trace files with shift domain origins
+
+    print("Creating new trace files...")
+
+    for i in range(sectionNum):
+        
+        # shift the domain origins to bottom left corner of planned crop
+        shift = (centers[i][0] + domainOrigins[i][0] - rad,
+                 centers[i][1] + domainOrigins[i][1] - rad)
+        
+        # create the new trace file (invert the shifts so the picture moves in the correct direction)
+        newTraceFile(oldLocation + "\\" + seriesName + "." + str(i),
+                     newLocation + "\\" + seriesName + "." + str(i),
+                     shift[0] * -1,
+                     shift[1] * -1,
+                     domainOrigins[i][2])
+
+    # Copy series file
+        
+    print("Copying original series file...")
+
+    oldSeriesFile = open(oldLocation + "\\" + seriesName + ".ser", "r")
+    newSeriesFile = open(newLocation + "\\" + seriesName + ".ser", "w")
+
+    for line in oldSeriesFile.readlines():
+        newSeriesFile.write(line + "\n")
+
+    oldSeriesFile.close()
+    newSeriesFile.close()
+
+    print("Completed successfully!")
+
+
+
+    # Crop each image
+
+    print("Cropping images around centers...\n")
+
+    for i in range(sectionNum):
+        
+        if not centers[i] == (0, 0):
+            
+            # set up correct file name (there's probably a better way to do this)
+            if i < 10:
+                fileName = seriesName + "." + "00" + str(i) + ".tif"
+            elif i < 100:
+                fileName = seriesName + "." + "0" + str(i) + ".tif"
+            elif i >= 100:
+                fileName = seriesName + "." + str(i) + ".tif"
+
+            print("Working on " + fileName + "...")
+            
+            # open original image with cv2 (PIL cannot handle large images)
+            img = cv2.imread(oldLocation + "\\" + fileName)
+            
+            # get the cropping radius in pixels
+            pixRad = rad * pixPerMic
+            
+            # get the center coordinates in pixels
+            pixx = (centers[i][0] + domainOrigins[i][0]) * pixPerMic
+            pixy = img.shape[0] - (centers[i][1] + domainOrigins[i][1]) * pixPerMic
+            
+            # get the pixel coordinates for each corner of the crop
+            left = int(pixx - pixRad)
+            right = int(pixx + pixRad)
+            top = int(pixy - pixRad)
+            bottom = int(pixy + pixRad)
+
+            # if crop exceeds image boundary, cut it off
+            if left < 0: left = 0
+            if right >= img.shape[1]: right = img.shape[1]-1
+            if top < 0: top = 0
+            if bottom >= img.shape[0]: bottom = img.shape[0]-1
+
+            # crop the photo (numpy slice)
+            cropped = img[top:bottom, left:right, 0]
+        
+            # cv2 can only save compressed TIF, so convert array to PIL object and save as uncompressed TIF
+            img = Image.fromarray(cropped)
+            img.save(newLocation + "\\" + fileName)
+            
+            print("Saved!\n")
+
+    print("Cropping program has run succesfully!")
+
+
+
+    # Revert trace file domain origins to original values
+
+    input("WARNING: This will rewrite the trace files in this folder. Backing up your files is advised.\n" +
+          "Press enter to continue.\n")
+
+    seriesName = input("What is the name of this series?: ")
+    sectionNum = int(input("What is the number of sections in this series? (make sure to include the 0 section): "))
+    croppedLocation = input("What is the file path for the folder with the cropped trace files?: ")
+
+    # check if user has domain origin data
+    hasData = ""
+    while hasData != "y" and hasData != "n":
+        hasData = input("Do you have the ORIGINAL_DOMAIN_ORIGINS.txt file? (y/n): ")
+
+    # if user does have data...
+    if hasData == "y":
+
+        #open text file
+        originalOriginsFile = open(croppedLocation + "\\ORIGINAL_DOMAIN_ORIGINS.TXT")
+
+        # read data from text file into list
+        domainOrigins = []
+        for line in originalOriginsFile.readlines():
+            coords = line.split()
+            domainOrigins.append([float(coords[0]), float(coords[1])])
+
+        # close test file
+        originalOriginsFile.close()
+
+    # if user does not have data, get it from the original trace files
+    elif hasData == "n":
+
+        oldLocation = input("What is the file path for the uncropped series?: ")
+
+        print("\nIdentifying domain origins...")
+
+        # gather domain origins from trace files
+        domainOrigins = []
+        for i in range(sectionNum):
+            domainOrigins.append(getDomainOrigin(oldLocation + '\\' + seriesName + "." + str(i)))
+
+    print("\nRestoring trace files to original domain...")
+
+    # rewrite domain origins
+    for i in range(sectionNum):
+            restoreDomainOrigin(croppedLocation + '\\' + seriesName + "." + str(i),
+                                domainOrigins[i][0], domainOrigins[i][1])
+
+    print("\nCompleted successfully!")
+
+except Exception as e:
+    print("ERROR: " + str(e))
+    
 input("\nPress enter to exit")

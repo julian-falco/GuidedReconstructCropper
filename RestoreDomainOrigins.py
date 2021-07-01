@@ -1,5 +1,31 @@
 # Revert trace file domain origins to original values
 
+def getDomainOrigin(fileName):
+    """Gets the domain origin data from a single trace file."""
+    
+    # open trace file, read lines, and close
+    traceFile = open(fileName, "r")
+    lines = traceFile.readlines()
+    traceFile.close()
+    
+    # set up iterator
+    lineIndex = 0
+    line = lines[lineIndex]
+    
+    # check for domain in the text to find domain origin index
+    while not '"domain1"' in line:
+        lineIndex += 1
+        line = lines[lineIndex]
+    
+    # origin points are actually four lines before "domain1" is mentioned in text
+    domainIndex = lineIndex - 4
+    
+    # grab x and y coords for domain origin
+    xcoef = float(lines[domainIndex].split()[1])
+    ycoef = float(lines[domainIndex+1].split()[1])
+
+    return xcoef, ycoef, domainIndex
+
 def restoreDomainOrigin(fileName, xcoef, ycoef):
     """Changes the domain origin on a single trace file to the specified values."""
     

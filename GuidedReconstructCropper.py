@@ -235,7 +235,7 @@ try:
 
     # Find the center points for the object and fill in missing centers
 
-    print("Identifying center points for the object...")
+    print("\nIdentifying center points for the object...")
 
     centers = []
 
@@ -244,7 +244,7 @@ try:
 
     centers = fillInCenters(centers)
 
-    print("Completed successfully!")
+    print("Completed successfully!\n")
 
 
 
@@ -266,7 +266,7 @@ try:
 
     print("ORIGINAL_DOMAIN_ORIGINS.txt has been stored in the new folder.\nDo NOT delete this file.")
 
-    print("Completed successfully!")
+    print("Completed successfully!\n")
 
 
 
@@ -300,7 +300,7 @@ try:
     oldSeriesFile.close()
     newSeriesFile.close()
 
-    print("Completed successfully!")
+    print("Completed successfully!\n")
 
 
 

@@ -126,54 +126,6 @@ def getDomainOrigin(fileName):
 
 
 
-def restoreDomainOrigin(fileName, xcoef, ycoef):
-    """Changes the domain origin on a single trace file to the specified values."""
-    
-    # open trace file, read lines, and close
-    croppedTraceFile = open(fileName, "r")
-    lines = croppedTraceFile.readlines()
-    croppedTraceFile.close()
-    
-    # set up iterator
-    lineIndex = 0
-    line = lines[lineIndex]
-    
-    # check for domain in the text to find domain origin index
-    while not '"domain1"' in line:
-        lineIndex += 1
-        line = lines[lineIndex]
-    
-    # origin points are actually four lines before "domain1" is mentioned in text
-    domainIndex = lineIndex - 4
-    
-    # create new trace file (overwrites cropped trace file)
-    restoredTraceFile = open(fileName, "w")
-    
-    for i in range(len(lines)):
-        
-        # grab line
-        line = lines[i]
-        
-        # if the line is on the xcoef domain origin index, change xcoef
-        if i == domainIndex:
-            splitLine = line.split()
-            splitLine[1] = str(xcoef)
-            restoredTraceFile.write(" " + " ".join(splitLine) + "\n")
-            
-        # if the line is on the ycoef domain origin index, change ycoef
-        elif i == domainIndex + 1:
-            splitLine = line.split()
-            splitLine[1] = str(ycoef)
-            restoredTraceFile.write(" " + " ".join(splitLine) + "\n")
-        
-        # otherwise, copy the file exactly as is
-        else:
-            restoredTraceFile.write(line)
-    
-    restoredTraceFile.close()
-
-
-
 def newTraceFile(fileName, newFileName, xshift, yshift, domainIndex):
     """Creates a single new trace file with a shifted domain origin."""
     

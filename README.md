@@ -25,11 +25,3 @@ You will also need to know the number of sections -- for example, if the series 
 
 The program will ask for the name of the object the crop should be centered on. Ensure that the object name is correct, as the program is case-sensitive.
 As for the radius around the crop, 5 microns works best for dendrite analysis.
-
-The program will also ask for the number of pixels per micron. If you do not have this number, there is a way to check it in Reconstruct.
-
-Section > Zoom > Actual Pixels
-
-Section > Zoom > Magnification
-
-The number displayed will be the number of pixels per micron.

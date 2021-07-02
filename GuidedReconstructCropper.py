@@ -98,7 +98,7 @@ def fillInCenters(centers):
 
 
 
-def getDomainOrigin(fileName):
+def getDomainOriginAndMag(fileName):
     """Gets the domain origin data from a single trace file."""
     
     # open trace file, read lines, and close
@@ -121,8 +121,9 @@ def getDomainOrigin(fileName):
     # grab x and y coords for domain origin
     xcoef = float(lines[domainIndex].split()[1])
     ycoef = float(lines[domainIndex+1].split()[1])
+    mag = float(lines[domainIndex+2].split('"')[1])
 
-    return xcoef, ycoef, domainIndex
+    return xcoef, ycoef, domainIndex, mag
 
 
 
@@ -173,7 +174,6 @@ try:
     sectionNum = int(input("What is the number of sections in this series? (make sure to include the 0 section): "))
     obj = input("What is the name of the object on which the crop should be centered?: ")
     rad = float(input("What is the cropping radius in microns?: "))
-    pixPerMic = float(input("What is the number of pixels per micron in this series?: "))
     oldLocation = input("What is the file path for the folder containing the original series?: ")
     newLocation = input("What is the file path for the empty folder to contain the new series?: ")
 
@@ -207,7 +207,7 @@ try:
     domainOrigins = []
 
     for i in range(sectionNum):
-        domainOrigins.append(getDomainOrigin(oldLocation + '\\' + seriesName + "." + str(i)))
+        domainOrigins.append(getDomainOriginAndMag(oldLocation + '\\' + seriesName + "." + str(i)))
 
     domainOriginsFile = open(newLocation + "\\ORIGINAL_DOMAIN_ORIGINS.txt", "w")
 
@@ -276,6 +276,9 @@ try:
             
             # open original image with cv2 (PIL cannot handle large images)
             img = cv2.imread(oldLocation + "\\" + fileName)
+            
+            # get magnification
+            pixPerMic = 1.0 / domainOrigins[i][3]
             
             # get the cropping radius in pixels
             pixRad = rad * pixPerMic

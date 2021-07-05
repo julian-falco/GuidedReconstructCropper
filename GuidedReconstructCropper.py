@@ -166,21 +166,38 @@ def newTraceFile(fileName, newFileName, xshift, yshift, domainIndex):
             
     newSectionFile.close()
 
+    
+    
+def getSeriesNameAndNum(dirPath):
+    """Return the series name and section number in a given folder"""
+    
+    os.chdir(dirPath)
+    # find the series file
+    for file in os.listdir("."):
+        if file.endswith(".ser"):
+            seriesName = str(file).replace(".ser", "")
+    
+    # find out how many sections there are
+    sectionNum = 0
+    end = False
+    while os.path.isfile(seriesName + "." + str(sectionNum)):
+        sectionNum += 1
+        
+    return seriesName, sectionNum
+
 
 
 # BEGINNING OF MAIN: gather inputs
 try:
-    seriesName = input("What is the name of this series?: ")
-    sectionNum = int(input("What is the number of sections in this series? (make sure to include the 0 section): "))
+    oldLocation = input("What is the file path for the folder containing the original series?: ")
+    seriesName, sectionNum = getSeriesNameAndNum(oldLocation)
     obj = input("What is the name of the object on which the crop should be centered?: ")
     rad = float(input("What is the cropping radius in microns?: "))
-    oldLocation = input("What is the file path for the folder containing the original series?: ")
     newLocation = input("What is the file path for the empty folder to contain the new series?: ")
 
     # requires that the two folder locations be different so that data is not overridden
     while oldLocation == newLocation:
         print("The file path for the original series and the new series cannot be the same")
-        oldLocation = input("What is the file path for the folder containing the original series?: ")
         newLocation = input("What is the file path for the empty folder to contain the new series?: ")
 
 

@@ -180,7 +180,6 @@ def getSeriesNameAndNum(dirPath):
     
     # find out how many sections there are
     sectionNum = 0
-    end = False
     while os.path.isfile(seriesName + "." + str(sectionNum)):
         sectionNum += 1
         

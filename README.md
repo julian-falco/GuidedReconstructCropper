@@ -18,10 +18,8 @@ pip install opencv-python
 
 At this point, you should be able to download and run the python file.
 
-You will be prompted for the name of the series -- this program assumes that the files will all be named after the series name.
 You will need to provide directory paths for both the series and an empty folder to contain the new series files.
 To get these, you can access the folders in your file explorer and copy the "link" at the top.
-You will also need to know the number of sections -- for example, if the series goes from sections 0-275, there are 276 sections.
 
 The program will ask for the name of the object the crop should be centered on. Ensure that the object name is correct, as the program is case-sensitive.
 As for the radius around the crop, 5 microns works best for dendrite analysis.

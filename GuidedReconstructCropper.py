@@ -1,6 +1,7 @@
 from PIL import Image
 import cv2
-import os
+from tkinter import *
+from tkinter.filedialog import *
 
 
 
@@ -169,31 +170,49 @@ def newTraceFile(fileName, newFileName, xshift, yshift, domainIndex):
 
     
     
-def getSeriesNameAndNum(dirPath):
-    """Return the series name and section number in a given folder"""
-    
-    os.chdir(dirPath)
-    # find the series file
-    for file in os.listdir("."):
-        if file.endswith(".ser"):
-            seriesName = str(file).replace(".ser", "")
+def getSeriesInfo(fileName):
+    """Return the series name, file path, and section number"""
+
+    # split up the name and file path
+    seriesName = fileName[fileName.rfind("/")+1:].replace(".ser", "")
+    filePath = fileName[:fileName.rfind("/")]
     
     # find out how many sections there are
     sectionNum = 0
-    while os.path.isfile(seriesName + "." + str(sectionNum)):
+    lastSection = False
+    while not lastSection:
+        try:
+            f = open(filePath + "/" + seriesName + "." + str(sectionNum))
+            f.close()
+        except:
+            lastSection = True
         sectionNum += 1
+    
+    sectionNum -= 1
         
-    return seriesName, sectionNum
+    return seriesName, filePath, sectionNum
 
 
 
 # BEGINNING OF MAIN: gather inputs
 try:
-    oldLocation = input("What is the file path for the folder containing the original series?: ")
-    seriesName, sectionNum = getSeriesNameAndNum(oldLocation)
+    # locate the series file and gather pertinent info
+    print("Please locate the series file that you wish to crop.")
+    input("Press enter to open your file browser.\n")
+    Tk().withdraw()
+    fileName = askopenfilename(title="Open a Series File",
+                               filetypes=(("Series File", "*.ser"),
+                                          ("All Files","*.*")))
+    print("Retrieving series info...\n")
+    seriesName, oldLocation, sectionNum = getSeriesInfo(fileName)
+
     obj = input("What is the name of the object on which the crop should be centered?: ")
     rad = float(input("What is the cropping radius in microns?: "))
-    newLocation = input("What is the file path for the empty folder to contain the new series?: ")
+
+    print("Please locate an empty folder to contain the new cropped series.")
+    input("Press enter to open your file browser.\n")
+    Tk().withdraw()
+    newLocation = askdirectory()
 
     # requires that the two folder locations be different so that data is not overridden
     while oldLocation == newLocation:

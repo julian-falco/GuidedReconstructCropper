@@ -209,7 +209,7 @@ try:
     obj = input("What is the name of the object on which the crop should be centered?: ")
     rad = float(input("What is the cropping radius in microns?: "))
 
-    print("Please locate an empty folder to contain the new cropped series.")
+    print("\nPlease locate an empty folder to contain the new cropped series.")
     input("Press enter to open your file browser.\n")
     Tk().withdraw()
     newLocation = askdirectory()
@@ -350,4 +350,4 @@ try:
 except Exception as e:
     print("ERROR: " + str(e))
     
-input("\nPress enter to exit")
+input("\nPress enter to exit.")

@@ -4,7 +4,6 @@ import os
 import numpy as np
 
 
-
 def findCenter(fileName, obj):
     """Finds the center of a specified object on a single trace file."""
     
@@ -43,14 +42,14 @@ def findCenter(fileName, obj):
             # split line into x and y coords
             coords = line.split()
             
-            # check if there are still points there and add to sum (with xcoef and ycoef offset)
+            # check if there are still points there and add to sum (with matrix transformation)
             if len(coords) == 2:
                 coords_mat = np.array([[float(coords[0])],
                                        [float(coords[1])],
-                                       [0]])
-                trans_mat = np.array([[xcoef[1],xcoef[2],xcoef[0]],
+                                       [1]])
+                trans_mat = np.linalg.inv(np.array([[xcoef[1],xcoef[2],xcoef[0]],
                                       [ycoef[1],ycoef[2],ycoef[0]],
-                                      [0,0,1]])
+                                      [0,0,1]]))
                 trans_coords = np.matmul(trans_mat, coords_mat)
                 xsum += trans_coords[0][0]
                 ysum += trans_coords[1][0]
@@ -72,6 +71,11 @@ def findCenter(fileName, obj):
                 xcoefIndex = lineIndex
                 while not ("xcoef" in lines[xcoefIndex]):
                     xcoefIndex -= 1
+
+                # raise exception if transformation dimension is higher than 3
+                dim = int(lines[xcoefIndex-1].split('"')[1])
+                if dim > 3:
+                    raise Exception("This program cannot work with transformation dimesnsions higher than three.")
                 
                 # set the xcoef and ycoef
                 xcoef = [float(x) for x in lines[xcoefIndex].split()[1:4]]
@@ -236,17 +240,25 @@ def switchToCrop(seriesName, objName):
 
     # get the local transformations saved and apply them to the traces
     # also edit trace files to change domain and source
-    localTrans = open(seriesName + "_" + objName + "/LOCAL_TRANSFORMATIONS.txt")
+    localTrans = open(seriesName + "_" + objName + "/LOCAL_TRANSFORMATIONS.txt", "r")
     lines = localTrans.readlines()
     localTrans.close()
 
+    origTrans = open("ORIGINAL_TRANSFORMATIONS.txt", "r")
+
+    
     for line in lines:
         if "Section" in line:
             sectionNum = int(line.split()[1])
+            origTrans.readline()
         elif "xshift" in line:
             xshift = float(line.split()[1])
+            origLine = origTrans.readline()
+            xcoef = [float(x) for x in origLine.split()[1:4]]
         elif "yshift" in line:
             yshift = float(line.split()[1])
+            origLine = origTrans.readline()
+            ycoef = [float(y) for y in origLine.split()[1:4]]
         elif "iztrans" in line:
             iztrans = [float(z) for z in line.split()[1:7]]
             iztransMatrix = [[iztrans[0],iztrans[1],iztrans[2]],
@@ -254,10 +266,20 @@ def switchToCrop(seriesName, objName):
                              [0,0,1]]
             transformAllTraces(seriesName + "." + str(sectionNum), iztransMatrix)
 
-            xcoef = [iztrans[2] + xshift, iztrans[0], iztrans[1], 0, 0, 0]
-            ycoef = [iztrans[5] + yshift, iztrans[3], iztrans[4], 0, 0, 0]
-
-            newTraceFile(seriesName, sectionNum, objName, xcoef, ycoef)
+            domainTransMatrix = iztransMatrix.copy()
+            domainTransMatrix[0][2] += xshift
+            domainTransMatrix[1][2] += yshift
+            
+            origTransMatrix = coefToMatrix(xcoef, ycoef)
+            
+            newDomainTransMatrix = np.matmul(origTransMatrix, domainTransMatrix)
+            
+            new_xcoef = [newDomainTransMatrix[0][2], newDomainTransMatrix[0][0], newDomainTransMatrix[0][1], 0, 0, 0]
+            new_ycoef = [newDomainTransMatrix[1][2], newDomainTransMatrix[1][0], newDomainTransMatrix[1][1], 0, 0, 0]
+            
+            newTraceFile(seriesName, sectionNum, objName, new_xcoef, new_ycoef)
+            
+    origTrans.close()
         
     
 def checkForRealignment(seriesName, objName):

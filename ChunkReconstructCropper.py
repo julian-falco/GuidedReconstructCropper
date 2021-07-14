@@ -55,15 +55,13 @@ def getSeriesInfo(fileName):
     firstSection = False
     
     # open files until unable to
-    while not firstSection or not lastSection:
-        try:
-            f = open(seriesName + "." + str(counter))
-            f.close()
+    while not (firstSection and lastSection):
+        if os.path.isfile(seriesName + "." + str(counter)):
             if not firstSection:
                 sectionNum[0] = counter
                 firstSection = True
             lastSection = False
-        except:
+        else:
             lastSection = True
         counter += 1
     
@@ -78,8 +76,9 @@ def switchToOriginal(seriesName, sectionNum, objName):
 
     # check for new transformations and undo them on each trace
     iDtransList = checkForRealignment(seriesName, objName)
+    noTrans = np.array([[1,0,0],[0,1,0],[0,0,1]])
     for i in range(len(iDtransList)):
-        if iDtransList[i].any():
+        if iDtransList[i].any() and not (iDtransList[i] == noTrans).all():
             transformAllTraces(seriesName + "." + str(i), iDtransList[i])
 
     # open the transformation files
@@ -155,12 +154,14 @@ def switchToCrop(seriesName, sectionNum, objName):
         elif "Dtrans" in line:
             Dtrans = [float(z) for z in line.split()[1:7]]
             DtransMatrix = [[Dtrans[0],Dtrans[1],Dtrans[2]],
-                             [Dtrans[3],Dtrans[4],Dtrans[5]],
-                             [0,0,1]]
+                                 [Dtrans[3],Dtrans[4],Dtrans[5]],
+                                 [0,0,1]]
 
             # transform all the traces by the Dtrans matrix
-            transformAllTraces(seriesName + "." + str(sectionNum), DtransMatrix)
-
+            noTrans = np.array([[1,0,0],[0,1,0],[0,0,1]])
+            if not (np.array(DtransMatrix) == noTrans).all():
+                transformAllTraces(seriesName + "." + str(sectionNum), DtransMatrix)
+                
             # add the xshift and yshift to the transformation matrix and apply it to the domain
             domainTransMatrix = DtransMatrix.copy()
             domainTransMatrix[0][2] += xshift
@@ -215,6 +216,9 @@ def checkForRealignment(seriesName, objName):
             orig_matrix = coefToMatrix(orig_xcoef, orig_ycoef)
             # get the "difference" between the two matrices and store the result
             z_matrix = np.matmul(orig_matrix, np.linalg.inv(local_matrix))
+            for row in range(len(z_matrix)):
+                for col in range(len(z_matrix)):
+                    z_matrix[row][col] = round(z_matrix[row][col],4)
             iDtransList.append(z_matrix)
         
     origTransFile.close()

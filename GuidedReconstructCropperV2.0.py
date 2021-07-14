@@ -490,9 +490,9 @@ seriesName, sectionNum = getSeriesInfo(fileName)
 # find the current crop focus
 cropFocus = getCropFocus(seriesName + "." + str(sectionNum[0]))
 if cropFocus:
-    print("This series is currently focused on: " + cropFocus)
+    print("This series is currently focused on: " + cropFocus + "\n")
 else:
-    print("This series is currently set to the original set of images.")
+    print("This series is currently set to the original set of images.\n")
 
 # gather inputs
 print("Please enter the name of the object you would like to focus on.")
@@ -537,7 +537,7 @@ else:
 
     # Find the center points for the object and fill in missing centers
 
-    print("\nIdentifying center points for the object...")
+    print("\nLocating the object...")
 
     centers = []
     for i in range(sectionNum[0]):
@@ -558,7 +558,7 @@ else:
     print("Completed successfully!\n")
 
     # ask the user for the cropping rad
-    rad = float(input("\nWhat is the cropping radius in microns?: "))
+    rad = float(input("What is the cropping radius in microns?: "))
 
     newLocation = seriesName + "_" + obj
     os.mkdir(newLocation)
@@ -566,7 +566,7 @@ else:
 
     # Find the domain origins for each of the sections and store them in a text file
 
-    print("Identifying and storing domain origins...")
+    print("\nIdentifying and storing domain origins...")
     saveOriginalTransformations(seriesName, sectionNum)
     
     sectionInfo = []
@@ -575,8 +575,7 @@ else:
     for i in range(sectionNum[0], sectionNum[1]):
         sectionInfo.append(getSectionInfo(seriesName + "." + str(i)))
         
-    print("ORIGINAL_TRANSFORMATIONS.txt has been stored.\nDo NOT delete this file.")
-    print("Completed successfully!\n")
+    print("ORIGINAL_TRANSFORMATIONS.txt has been stored.\nDo NOT delete this file.\n")
 
     # Create new trace files with shift domain origins
 
@@ -599,6 +598,9 @@ else:
                                      "Dtrans: 1 0 0 0 1 0\n")
 
     newTransformationsFile.close()
+
+    print("LOCAL_TRANSFORMATIONS.txt has been stored.\nDo NOT delete this file.\n")
+
 
 
     # Crop each image

@@ -91,7 +91,6 @@ def findCenter(fileName, obj):
     return xsum/total, ysum/total
 
 
-
 def fillInCenters(centers):
     """Fills in center data where object doesn't exist with center data from previous sections."""
     
@@ -110,7 +109,6 @@ def fillInCenters(centers):
         prevCenter = centers[center]
     
     return centers
-
 
 
 def getSectionInfo(fileName):
@@ -148,7 +146,6 @@ def getSectionInfo(fileName):
     return xcoef, ycoef, mag, src
 
     
-    
 def getSeriesInfo(fileName):
     """Return the series name and section number"""
 
@@ -168,7 +165,6 @@ def getSeriesInfo(fileName):
     sectionNums.sort()
 
     return seriesName, sectionNums
-
 
 
 def switchToOriginal(seriesName, objName):
@@ -293,6 +289,7 @@ def checkForRealignment(seriesName, objName):
 
     return iDtransList
 
+
 def transformAllTraces(fileName, transformation, xshift, yshift, objName):
     """Multiply all of the traces on a section by a transformation matrix while also changing the image domain and source"""
 
@@ -392,6 +389,7 @@ def transformAllTraces(fileName, transformation, xshift, yshift, objName):
 
     newSectionFile.close()
 
+
 def coefToMatrix(xcoef, ycoef):
     """Turn a set of x and y coef into a transformation matrix"""
     
@@ -461,6 +459,7 @@ def newTraceFile(seriesName, sectionNum, objName, xcoef, ycoef):
             
     newSectionFile.close()
 
+
 def getCropFocus(sectionFileName):
     """Find the current crop focus"""
 
@@ -483,6 +482,7 @@ def getCropFocus(sectionFileName):
 
     return cropFocus
 
+
 def saveOriginalTransformations(seriesName, sectionNums):
     transformationsFile = open("ORIGINAL_TRANSFORMATIONS.txt", "w")
     for sectionNum in sectionNums:
@@ -497,6 +497,8 @@ def saveOriginalTransformations(seriesName, sectionNums):
                                   "xcoef: " + xcoef_str + "\n" +
                                   "ycoef: " + ycoef_str + "\n")
     transformationsFile.close()
+
+
 
 # BEGINNING OF MAIN: gather inputs
 
@@ -624,8 +626,6 @@ else:
 
     print("LOCAL_TRANSFORMATIONS.txt has been stored.")
     print("Do NOT delete this file.")
-
-
 
     # Crop each image
 

@@ -449,7 +449,7 @@ def floatInput(inputStr):
         try:
             num = float(input(inputStr))
             isFloat = True
-        except:
+        except ValueError:
             print("Please enter a valid number.")
     return num
 

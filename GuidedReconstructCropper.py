@@ -75,9 +75,9 @@ def findCenter(fileName, obj):
                     xcoefIndex -= 1
 
                 # raise exception if transformation dimension is higher than 3
-                dim = int(lines[xcoefIndex-1].split('"')[1])
-                if dim > 3:
-                    raise Exception("This program cannot work with transformation dimensions higher than three.")
+                ##dim = int(lines[xcoefIndex-1].split('"')[1])
+                ##if dim > 3:
+                ##    raise Exception("This program cannot work with transformation dimensions higher than three.")
                 
                 # set the xcoef and ycoef
                 xcoef = [float(x) for x in lines[xcoefIndex].split()[1:4]]
@@ -129,9 +129,9 @@ def getSectionInfo(fileName):
         line = lines[domainIndex]
     
     # raise exception if transformation dimension is higher than 3
-    dim = int(lines[domainIndex-5].split('"')[1])
-    if dim > 3:
-        raise Exception("This program cannot work with transformation dimensions higher than three.")
+    ##dim = int(lines[domainIndex-5].split('"')[1])
+    ##if dim > 3:
+    ##    raise Exception("This program cannot work with transformation dimensions higher than three.")
 
     # grab xcoef transformation
     xcoef = [float(x) for x in lines[domainIndex-4].replace('"',"").split()[1:4]]
@@ -185,25 +185,25 @@ def switchToOriginal(seriesName, objName):
         if "Section" in line:
             sectionNum = int(line.split()[1])
         elif "xshift" in line:
-            xshift = float(line.split()[1])
+            xshift_pix = int(line.split()[1])
         elif "yshift" in line:
-            yshift = float(line.split()[1])
+            yshift_pix = int(line.split()[1])
             
         elif "Dtrans" in line:
             # edit all of the traces in the section
             transformAllTraces(seriesName + "." + str(sectionNum),
                                iDtransList[sectionNum],
-                               -xshift, -yshift, "")
+                               -xshift_pix, -yshift_pix, "")
             
             # store the transformation matrix going from original to cropped
             Dtrans = np.linalg.inv(iDtransList[sectionNum])
             line = "Dtrans: "
-            line += str(round(Dtrans[0,0],4)) + " "
-            line += str(round(Dtrans[0,1],4)) + " "
-            line += str(round(Dtrans[0,2],4)) + " "
-            line += str(round(Dtrans[1,0],4)) + " "
-            line += str(round(Dtrans[1,1],4)) + " "
-            line += str(round(Dtrans[1,2],4)) + "\n"
+            line += str(Dtrans[0,0]) + " "
+            line += str(Dtrans[0,1]) + " "
+            line += str(Dtrans[0,2]) + " "
+            line += str(Dtrans[1,0]) + " "
+            line += str(Dtrans[1,1]) + " "
+            line += str(Dtrans[1,2]) + "\n"
                 
         newLocalTrans.write(line)
 
@@ -232,9 +232,9 @@ def switchToCrop(seriesName, objName):
         if "Section" in line:
             sectionNum = int(line.split()[1])
         elif "xshift" in line:
-            xshift = float(line.split()[1])
+            xshift_pix = int(line.split()[1])
         elif "yshift" in line:
-            yshift = float(line.split()[1])
+            yshift_pix = int(line.split()[1])
         elif "Dtrans" in line:
             Dtrans = [float(z) for z in line.split()[1:7]]
             DtransMatrix = [[Dtrans[0],Dtrans[1],Dtrans[2]],
@@ -242,7 +242,7 @@ def switchToCrop(seriesName, objName):
                                  [0,0,1]]
 
             # transform all the traces by the Dtrans matrix
-            transformAllTraces(seriesName + "." + str(sectionNum), DtransMatrix, xshift, yshift, objName)
+            transformAllTraces(seriesName + "." + str(sectionNum), DtransMatrix, xshift_pix, yshift_pix, objName)
         
     
 def checkForRealignment(seriesName, objName):
@@ -263,25 +263,23 @@ def checkForRealignment(seriesName, objName):
             local_ycoef = sectionInfo[1]
         elif "xshift" in localLine:
             origLine = origTransFile.readline()
-            orig_xcoef = [float(x) for x in origLine.split()[1:7]]
-            xshift = float(localLine.split()[1])
-            local_xcoef[0] -= xshift
+            orig_xcoef = [float(x) for x in origLine.split()[1:4]]
+            xshift = int(localLine.split()[1]) * sectionInfo[2]
         elif "yshift" in localLine:
             origLine = origTransFile.readline()
-            orig_ycoef = [float(y) for y in origLine.split()[1:7]]
-            yshift = float(localLine.split()[1])
-            local_ycoef[0] -= yshift
+            orig_ycoef = [float(y) for y in origLine.split()[1:4]]
+            yshift = int(localLine.split()[1]) * sectionInfo[2]
 
         # check for realignment using the two matrices
         elif "Dtrans" in localLine:
             # set up the two matrices
             local_matrix = coefToMatrix(local_xcoef, local_ycoef)
             orig_matrix = coefToMatrix(orig_xcoef, orig_ycoef)
+            transformedShiftCoords = np.matmul(local_matrix[:2,:2], [[xshift],[yshift]])
+            local_matrix[0][2] -= transformedShiftCoords[0][0]
+            local_matrix[1][2] -= transformedShiftCoords[1][0]
             # get the "difference" between the two matrices and store the result
             z_matrix = np.matmul(orig_matrix, np.linalg.inv(local_matrix))
-            for row in range(len(z_matrix)):
-                for col in range(len(z_matrix)):
-                    z_matrix[row][col] = round(z_matrix[row][col],4)
             iDtransList[sectionNum] = z_matrix
         
     origTransFile.close()
@@ -290,18 +288,26 @@ def checkForRealignment(seriesName, objName):
     return iDtransList
 
 
-def transformAllTraces(fileName, transformation, xshift, yshift, objName):
+def transformAllTraces(fileName, transformation, xshift_pix, yshift_pix, objName):
     """Multiply all of the traces on a section by a transformation matrix while also changing the image domain and source"""
 
+    # get section info
+    sectionInfo = getSectionInfo(fileName)
+    sectionNum = int(fileName[fileName.rfind(".")+1:])
+    
     # check if transformation is needed
     transformation = np.array(transformation)
     noTrans = np.array([[1,0,0],[0,1,0],[0,0,1]])
-    needsTransformation = not (transformation == noTrans).all()
-    
+    needsTransformation = not (np.round(transformation, decimals = 8) == noTrans).all()
+
     # make the domain transformation matrix
+    existingDomainTrans = coefToMatrix(sectionInfo[0],sectionInfo[1])
+    transformedShiftCoords = np.matmul(existingDomainTrans[:2,:2],
+                                       [[xshift_pix*sectionInfo[2]],[yshift_pix*sectionInfo[2]]])
+    transformedShiftCoords = np.matmul(transformation[:2,:2], transformedShiftCoords)
     domainTransformation = transformation.copy()
-    domainTransformation[0][2] += xshift
-    domainTransformation[1][2] += yshift
+    domainTransformation[0][2] += transformedShiftCoords[0][0]
+    domainTransformation[1][2] += transformedShiftCoords[1][0]
     
     # open the section file    
     sectionFile = open(fileName, "r")
@@ -329,20 +335,20 @@ def transformAllTraces(fileName, transformation, xshift, yshift, objName):
             # gather the matrices and multiply them by the transformation matrix
             xcoef = [float(x) for x in line.split()[1:4]]
             ycoef = [float(y) for y in lines[i+1].split()[1:4]]
-            newMatrix = np.matmul(domainTransformation, coefToMatrix(xcoef, ycoef))
+            newMatrix = np.linalg.inv(np.matmul(domainTransformation, coefToMatrix(xcoef, ycoef)))
 
             # write the new matrices to the file
             
             xcoef_line = ' xcoef=" '
-            xcoef_line += str(round(newMatrix[0,2],4)) + " "
-            xcoef_line += str(round(newMatrix[0,0],4)) + " "
-            xcoef_line += str(round(newMatrix[0,1],4)) + " "
+            xcoef_line += str(newMatrix[0,2]) + " "
+            xcoef_line += str(newMatrix[0,0]) + " "
+            xcoef_line += str(newMatrix[0,1]) + " "
             xcoef_line += '0 0 0"\n'
 
             ycoef_line = ' ycoef=" '
-            ycoef_line += str(round(newMatrix[1,2],4)) + " "
-            ycoef_line += str(round(newMatrix[1,0],4)) + " "
-            ycoef_line += str(round(newMatrix[1,1],4)) + " "
+            ycoef_line += str(newMatrix[1,2]) + " "
+            ycoef_line += str(newMatrix[1,0]) + " "
+            ycoef_line += str(newMatrix[1,1]) + " "
             ycoef_line += '0 0 0">\n'
 
             line = xcoef_line
@@ -364,20 +370,20 @@ def transformAllTraces(fileName, transformation, xshift, yshift, objName):
             # gather the matrices and multiply them by the transformation matrix
             xcoef = [float(x) for x in line.split()[1:4]]
             ycoef = [float(y) for y in lines[i+1].split()[1:4]]
-            newMatrix = np.matmul(transformation, coefToMatrix(xcoef, ycoef))
+            newMatrix = np.linalg.inv(np.matmul(transformation, coefToMatrix(xcoef, ycoef)))
 
             # write the new matrices to the file
             
             xcoef_line = ' xcoef=" '
-            xcoef_line += str(round(newMatrix[0,2],4)) + " "
-            xcoef_line += str(round(newMatrix[0,0],4)) + " "
-            xcoef_line += str(round(newMatrix[0,1],4)) + " "
+            xcoef_line += str(newMatrix[0,2]) + " "
+            xcoef_line += str(newMatrix[0,0]) + " "
+            xcoef_line += str(newMatrix[0,1]) + " "
             xcoef_line += '0 0 0"\n'
 
             ycoef_line = ' ycoef=" '
-            ycoef_line += str(round(newMatrix[1,2],4)) + " "
-            ycoef_line += str(round(newMatrix[1,0],4)) + " "
-            ycoef_line += str(round(newMatrix[1,1],4)) + " "
+            ycoef_line += str(newMatrix[1,2]) + " "
+            ycoef_line += str(newMatrix[1,0]) + " "
+            ycoef_line += str(newMatrix[1,1]) + " "
             ycoef_line += '0 0 0">\n'
 
             line = xcoef_line
@@ -393,71 +399,9 @@ def transformAllTraces(fileName, transformation, xshift, yshift, objName):
 def coefToMatrix(xcoef, ycoef):
     """Turn a set of x and y coef into a transformation matrix"""
     
-    return np.array([[xcoef[1], xcoef[2], xcoef[0]],
+    return np.linalg.inv(np.array([[xcoef[1], xcoef[2], xcoef[0]],
                        [ycoef[1], ycoef[2], ycoef[0]],
-                       [0, 0, 1]])
-
-
-def newTraceFile(seriesName, sectionNum, objName, xcoef, ycoef):
-    """Creates a single new trace file with a shifted domain origin."""
-    
-    # open original trace file, read lines, and close
-    fileName = seriesName + "." + str(sectionNum)
-    sectionFile = open(fileName, "r")
-    lines = sectionFile.readlines()
-    sectionFile.close()
-    
-    # create new trace file
-    newSectionFile = open(fileName, "w")
-
-    # set up iterator
-    domainIndex = 0
-    line = lines[domainIndex]
-    
-    # check for domain in the text to find domain origin index
-    while not '"domain1"' in line:
-        domainIndex += 1
-        line = lines[domainIndex]
-        
-    for i in range(len(lines)):
-        
-        # grab line
-        line = lines[i]
-
-        # make sure dimension is correct
-        if i == domainIndex - 5 and 'dim="0"' in line:
-            newSectionFile.write('<Transform dim="3"\n')
-        
-        # if the line is on the xcoef domain origin index, set x-shift
-        elif i == domainIndex - 4:
-            xcoef_str = ' xcoef="'
-            for x in xcoef:
-                xcoef_str += " " + str(round(x,4))
-            xcoef_str += ' 0 0 0"'
-            newSectionFile.write(xcoef_str + "\n")
-            
-        # if the line is on the ycoef domain origin index, set y-shift
-        elif i == domainIndex - 3:
-            ycoef_str = ' ycoef="'
-            for y in ycoef:
-                ycoef_str += " " + str(round(y,4))
-            ycoef_str += ' 0 0 0">'
-            newSectionFile.write(ycoef_str + "\n")
-
-        # create a new image directory
-        elif i == domainIndex - 1:
-            imageFile = line.split('"')[1]
-            if "/" in imageFile:
-                imageFile = imageFile[imageFile.find("/")+1:]
-            if not objName == "":
-                imageFile = seriesName + "_" + objName + "/" + imageFile
-            newSectionFile.write(' src="' + imageFile + '" />\n')
-                
-        # otherwise, copy the file exactly as is
-        else:
-            newSectionFile.write(line)
-            
-    newSectionFile.close()
+                       [0, 0, 1]]))
 
 
 def getCropFocus(sectionFileName):
@@ -489,14 +433,25 @@ def saveOriginalTransformations(seriesName, sectionNums):
         sectionInfo = getSectionInfo(seriesName + "." + str(sectionNum))
         xcoef_str = ""
         for x in sectionInfo[0]:
-            xcoef_str += str(round(x,4)) + " "
+            xcoef_str += str(x) + " "
         ycoef_str = ""
         for y in sectionInfo[1]:
-            ycoef_str += str(round(y,4)) + " "
+            ycoef_str += str(y) + " "
         transformationsFile.write("Section " + str(sectionNum) + "\n"
                                   "xcoef: " + xcoef_str + "\n" +
                                   "ycoef: " + ycoef_str + "\n")
     transformationsFile.close()
+
+
+def floatInput(inputStr):
+    isFloat = False
+    while not isFloat:
+        try:
+            num = float(input(inputStr))
+            isFloat = True
+        except:
+            print("Please enter a valid number.")
+    return num
 
 
 
@@ -576,7 +531,7 @@ else:
     # check to see if the object was found, raise exception if not
     noTraceFound = True
     for center in centers:
-        if center != (0,0) and center != None:
+        if centers[center] != (None,None):
             noTraceFound = False
     if noTraceFound:
         raise Exception("This trace does not exist in this series.")
@@ -586,7 +541,7 @@ else:
     print("Completed successfully!")
 
     # ask the user for the cropping rad
-    rad = float(input("\nWhat is the cropping radius in microns?: "))
+    rad = floatInput("\nWhat is the cropping radius in microns?: ")
 
     newLocation = seriesName + "_" + obj
     os.mkdir(newLocation)
@@ -613,13 +568,15 @@ else:
     for sectionNum in sectionNums:
         
         # shift the domain origins to bottom left corner of planned crop
-        xshift = -(sectionInfo[sectionNum][0][0] + centers[sectionNum][0] - rad)
-        
-        yshift = -(sectionInfo[sectionNum][1][0] + centers[sectionNum][1] - rad)
-
+        orig_trans = coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1])
+        untransformedCenter = np.matmul(np.linalg.inv(orig_trans),
+                                        [[centers[sectionNum][0]],[centers[sectionNum][1]],[1]])
+        pixPerMic = 1.0 / sectionInfo[sectionNum][2]
+        xshift_pix = int((untransformedCenter[0][0] - rad) * pixPerMic)
+        yshift_pix = int((untransformedCenter[1][0] - rad) * pixPerMic)
         newTransformationsFile.write("Section " + str(sectionNum) + "\n" +
-                                     "xshift: " + str(round(xshift,4)) + "\n" +
-                                     "yshift: " + str(round(yshift,4)) + "\n" +
+                                     "xshift: " + str(xshift_pix) + "\n" +
+                                     "yshift: " + str(yshift_pix) + "\n" +
                                      "Dtrans: 1 0 0 0 1 0\n")
 
     newTransformationsFile.close()
@@ -650,14 +607,15 @@ else:
         pixRad = rad * pixPerMic
         
         # get the center coordinates in pixels
-        pixx = (centers[sectionNum][0] + sectionInfo[sectionNum][0][0]) * pixPerMic
-        pixy = img_height - (centers[sectionNum][1] + sectionInfo[sectionNum][1][0]) * pixPerMic
+        orig_trans = coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1])
+        untransformedCenter = np.matmul(np.linalg.inv(orig_trans),
+                                        [[centers[sectionNum][0]],[centers[sectionNum][1]],[1]])
         
         # get the pixel coordinates for each corner of the crop
-        left = int(pixx - pixRad)
-        right = int(pixx + pixRad)
-        top = int(pixy - pixRad)
-        bottom = int(pixy + pixRad)
+        left = int((untransformedCenter[0][0] - rad) * pixPerMic)
+        bottom = img_height - int((untransformedCenter[1][0] - rad) * pixPerMic)
+        right = int((untransformedCenter[0][0] + rad) * pixPerMic)
+        top = img_height - int((untransformedCenter[1][0] + rad) * pixPerMic)
 
         # if crop exceeds image boundary, cut it off
         if left < 0: left = 0

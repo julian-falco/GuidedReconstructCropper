@@ -6,6 +6,113 @@ from tkinter import *
 from tkinter.filedialog import askopenfilename, askopenfilenames
 
 
+def findCenter(fileName, obj):
+    """Finds the center of a specified object on a single trace file."""
+    
+    # open trace file, read lines, and close
+    sectionFile = open(fileName, 'r')
+    lines = sectionFile.readlines()    
+    sectionFile.close()
+    
+    # set up sums for averages
+    xsum = 0
+    ysum = 0
+    total = 0
+    
+    # recording: set to True whenever the points in the file are being recorded
+    recording = False
+    
+    for lineIndex in range(len(lines)):
+        
+        # grab line
+        line = lines[lineIndex]
+        
+        # if data points are being recorded from the trace file...
+        if recording:
+            
+            # keep track of total points
+            total += 1
+            
+            # the first point starts with "points=" in the text file; remove this part
+            if firstLine:
+                line = line.replace('points="', '')
+                firstLine = False
+            
+            #remove commas
+            line = line.replace(',', '')
+            
+            # split line into x and y coords
+            coords = line.split()
+            
+            # check if there are still points there and add to sum (with matrix transformation)
+            if len(coords) == 2:
+                
+                # set up points and transformation matrix
+                coords_mat = np.array([[float(coords[0])],
+                                       [float(coords[1])],
+                                       [1]])
+                trans_mat = np.linalg.inv(np.array([[xcoef[1],xcoef[2],xcoef[0]],
+                                      [ycoef[1],ycoef[2],ycoef[0]],
+                                      [0,0,1]]))
+                trans_coords = np.matmul(trans_mat, coords_mat)
+                xsum += trans_coords[0][0]
+                ysum += trans_coords[1][0]
+            
+            # stop recording otherwise
+            else:
+                total -= 1
+                recording = False
+            
+        # if not recording data points...
+        else:
+            
+            # check for object name in the line
+            if ('"' + obj + '"') in line:
+                recording = True
+                firstLine = True
+                
+                # backtrack through the trace file to find the xcoef and ycoef
+                xcoefIndex = lineIndex
+                while not ("xcoef" in lines[xcoefIndex]):
+                    xcoefIndex -= 1
+
+                # raise exception if transformation dimension is higher than 3
+                ##dim = int(lines[xcoefIndex-1].split('"')[1])
+                ##if dim > 3:
+                ##    raise Exception("This program cannot work with transformation dimensions higher than three.")
+                
+                # set the xcoef and ycoef
+                xcoef = [float(x) for x in lines[xcoefIndex].split()[1:4]]
+                ycoef = [float(y) for y in lines[xcoefIndex+1].split()[1:4]]
+    
+    # if the trace is not found in the section
+    if total == 0:
+        return None, None
+    
+    # return averages
+    return xsum/total, ysum/total
+
+
+def fillInCenters(centers):
+    """Fills in center data where object doesn't exist with center data from previous sections."""
+    
+    # if the first section(s) do not have the object, then fill it in with first object instance
+    firstInstanceFound = False
+    prevCenter = (None, None)
+    for center in centers:
+        if centers[center] != (None, None) and not firstInstanceFound:
+            prevCenter = centers[center]
+            firstInstanceFound = True
+    
+    # set any center points that are (None, None) to the previous center
+    for center in centers:
+        if centers[center] == (None, None):
+            centers[center] = prevCenter
+        prevCenter = centers[center]
+    
+    return centers
+
+
 def getSectionInfo(fileName):
     """Gets the domain origin data from a single trace file."""
     
@@ -344,7 +451,7 @@ def intInput(inputStr):
         try:
             num = int(input(inputStr))
             isInt = True
-        except:
+        except ValueError:
             print("Please enter a valid integer.")
     return num
 
@@ -354,7 +461,7 @@ def floatInput(inputStr):
         try:
             num = float(input(inputStr))
             isFloat = True
-        except:
+        except ValueError:
             print("Please enter a valid number.")
     return num
 
@@ -391,11 +498,11 @@ if fileName:
         print("This series is currently set to the original set of images.")
 
     # gather inputs
-    print("\nPlease enter the coordinates you would like to focus on.")
-    chunkCoords = input("(x,y with no spaces or parentheses): ")
+    print("\nPlease enter the coordinates or object you would like to focus on.")
+    newFocus = input("(x,y with no spaces or parentheses): ")
 
     # if switching to original
-    if chunkCoords == "":
+    if newFocus == "":
         if cropFocus == "":
             print("\nThe original series is already set as the focus.")
         else:
@@ -407,20 +514,142 @@ if fileName:
 
     # if switching to existing crop
     else:
-        if cropFocus == chunkCoords:
-            print("\n" + chunkCoords + " is already set as the focus.")
-        elif not os.path.isdir(seriesName + "_" + chunkCoords):
-            print("\nThese chunk coordinates do not exist.")
+        if cropFocus == newFocus:
+            print("\n" + newFocus + " is already set as the focus.")
+        elif not os.path.isdir(seriesName + "_" + newFocus):
+            print("\nThis crop does not exist.")
+            input("Press enter to create a new crop for this object (press Ctrl+c to exit).")
+            obj = newFocus
+            print("\nLocating the object...")
+
+            centers = {}
+            for sectionNum in sectionNums:
+                centers[sectionNum] = findCenter(seriesName + "." + str(sectionNum), obj)
+
+            # check to see if the object was found, raise exception if not
+            noTraceFound = True
+            for center in centers:
+                if centers[center] != (None,None):
+                    noTraceFound = False
+            if noTraceFound:
+                raise Exception("This trace does not exist in this series.")
+
+            centers = fillInCenters(centers)
+
+            print("Completed successfully!")
+
+            # get the original series images
+            input("\nPress enter to select the original series images.")
+
+            root = Tk()
+            root.attributes("-topmost", True)
+            root.withdraw()
+            
+            imageFiles = list(askopenfilenames(title="Select Image Files",
+                                       filetypes=(("Image Files", "*.tif"),
+                                                  ("All Files","*.*"))))
+            if len(imageFiles) == 0:
+                raise Exception("No pictures were selected.")
+
+            
+            # ask the user for the cropping rad
+            rad = floatInput("\nWhat is the cropping radius in microns?: ")
+
+            newLocation = seriesName + "_" + obj
+            os.mkdir(newLocation)
+            
+            sectionInfo = {}
+            for sectionNum in sectionNums:
+                sectionInfo[sectionNum] = getSectionInfo(seriesName + "." + str(sectionNum))
+
+            # Create new trace files with shift domain origins
+
+            print("\nCreating new domain origins file...")
+
+            newTransformationsFile = open(newLocation + "/LOCAL_TRANSFORMATIONS.txt", "w")
+
+            for sectionNum in sectionNums:
+                
+                # shift the domain origins to bottom left corner of planned crop
+                orig_trans = coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1])
+                untransformedCenter = np.matmul(np.linalg.inv(orig_trans),
+                                                [[centers[sectionNum][0]],[centers[sectionNum][1]],[1]])
+                pixPerMic = 1.0 / sectionInfo[sectionNum][2]
+                xshift_pix = int((untransformedCenter[0][0] - rad) * pixPerMic)
+                yshift_pix = int((untransformedCenter[1][0] - rad) * pixPerMic)
+                newTransformationsFile.write("Section " + str(sectionNum) + "\n" +
+                                             "xshift: " + str(xshift_pix) + "\n" +
+                                             "yshift: " + str(yshift_pix) + "\n" +
+                                             "Dtrans: 1 0 0 0 1 0\n")
+
+            newTransformationsFile.close()
+
+            print("LOCAL_TRANSFORMATIONS.txt has been stored.")
+            print("Do NOT delete this file.")
+
+            # Crop each image
+
+            print("\nCropping images around centers...")
+
+            for sectionNum in sectionNums:   
+                    
+                fileName = imageFiles[sectionNum]
+
+                print("\nWorking on " + fileName + "...")
+                
+                # open original image
+                img = PILImage.open(fileName)
+
+                # get image dimensions
+                img_length, img_height = img.size
+                
+                # get magnification
+                pixPerMic = 1.0 / sectionInfo[sectionNum][2]
+                
+                # get the cropping radius in pixels
+                pixRad = rad * pixPerMic
+                
+                # get the center coordinates in pixels
+                orig_trans = coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1])
+                untransformedCenter = np.matmul(np.linalg.inv(orig_trans),
+                                                [[centers[sectionNum][0]],[centers[sectionNum][1]],[1]])
+                
+                # get the pixel coordinates for each corner of the crop
+                left = int((untransformedCenter[0][0] - rad) * pixPerMic)
+                bottom = img_height - int((untransformedCenter[1][0] - rad) * pixPerMic)
+                right = int((untransformedCenter[0][0] + rad) * pixPerMic)
+                top = img_height - int((untransformedCenter[1][0] + rad) * pixPerMic)
+
+                # if crop exceeds image boundary, cut it off
+                if left < 0: left = 0
+                if right >= img_length: right = img_length-1
+                if top < 0: top = 0
+                if bottom >= img_height: bottom = img_height-1
+
+                # crop the photo
+                cropped = img.crop((left, top, right, bottom))
+                cropped.save(newLocation + "/" + seriesName + "." + str(sectionNum) + ".tif")
+                
+                print("Saved!")
+
+            print("\nCropping has run successfully!")
+
+            print("\nSwitching to new crop...")
+            switchToCrop(seriesName, obj)
+
+            print("Successfully set " + obj + " as the focus.")
+        
         else:
             if cropFocus != "":
                 # switch to the original crop if not already on
                 print("\nSwitching to original crop focus to prepare...")
                 switchToOriginal(seriesName, cropFocus)
                 print("Successfully set the original series as the focus.")
-            input("\nPress enter to continue and switch cropping focus to " + chunkCoords)
-            print("\nSwitching to " + chunkCoords + "...")
-            switchToCrop(seriesName, chunkCoords)
-            print("Successfully set " + chunkCoords + " as the focus.")
+            input("\nPress enter to continue and switch cropping focus to " + newFocus)
+            print("\nSwitching to " + newFocus + "...")
+            switchToCrop(seriesName, newFocus)
+            print("Successfully set " + newFocus + " as the focus.")
+
 
 # cropping a new set of images if there is no detected series file
 else:
@@ -435,6 +664,8 @@ else:
     imageFiles = list(askopenfilenames(title="Select Image Files",
                                filetypes=(("Image Files", "*.tif"),
                                           ("All Files","*.*"))))
+    if len(imageFiles) == 0:
+                raise Exception("No pictures were selected.")
     
     xchunks = intInput("\nHow many horizontal chunks would you like to have?: ")
     ychunks = intInput("How many vertical chunks would you like to have?: ")

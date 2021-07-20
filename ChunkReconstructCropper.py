@@ -537,6 +537,10 @@ if fileName:
             centers = fillInCenters(centers)
 
             print("Completed successfully!")
+            
+            print("\nSwitching to original focus...")
+            switchToOriginal(seriesName, cropFocus)
+            print("Switched to original focus.")
 
             # get the original series images
             input("\nPress enter to select the original series images.")

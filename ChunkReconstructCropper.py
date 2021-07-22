@@ -422,7 +422,8 @@ def getCropFocus(sectionFileName):
 
     # analyze the image file name
     if "/" in imageFile:
-        cropFocus = imageFile[imageFile.find("_")+1:imageFile.find("/")]
+        folder = imageFile.split("/")[0]
+        cropFocus = folder[folder.rfind("_")+1:]
     else:
         cropFocus = ""
 
@@ -580,7 +581,11 @@ if fileName:
                                                 [[centers[sectionNum][0]],[centers[sectionNum][1]],[1]])
                 pixPerMic = 1.0 / sectionInfo[sectionNum][2]
                 xshift_pix = int((untransformedCenter[0][0] - rad) * pixPerMic)
+                if xshift_pix < 0:
+                    xshift_pix = 0
                 yshift_pix = int((untransformedCenter[1][0] - rad) * pixPerMic)
+                if yshift_pix < 0:
+                    yshift_pix = 0
                 newTransformationsFile.write("Section " + str(sectionNum) + "\n" +
                                              "xshift: " + str(xshift_pix) + "\n" +
                                              "yshift: " + str(yshift_pix) + "\n" +

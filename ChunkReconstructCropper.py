@@ -6,18 +6,42 @@ from tkinter import *
 from tkinter.filedialog import askopenfilename, askopenfilenames
 
 
-def findCenter(fileName, obj):
-    """Finds the center of a specified object on a single trace file."""
+def findBounds(fileName, obj):
+    """Finds the bounds of a specified object on a single trace file."""
     
     # open trace file, read lines, and close
     sectionFile = open(fileName, 'r')
     lines = sectionFile.readlines()    
     sectionFile.close()
+
+    # get the domain transformation
+    domainIndex = 0
+    line = lines[domainIndex]
     
-    # set up sums for averages
-    xsum = 0
-    ysum = 0
-    total = 0
+    # check for domain in the text to find domain origin index
+    while not '"domain1"' in line:
+        domainIndex += 1
+        line = lines[domainIndex]
+    
+    # raise exception if transformation dimension is higher than 3
+    ##dim = int(lines[domainIndex-5].split('"')[1])
+    ##if dim > 3:
+    ##    raise Exception("This program cannot work with transformation dimensions higher than three.")
+
+    # grab xcoef transformation
+    xcoef = [float(x) for x in lines[domainIndex-4].replace('"',"").split()[1:4]]
+
+    # grab ycoef transformation
+    ycoef = [float(y) for y in lines[domainIndex-3].replace('">',"").split()[1:4]]
+
+    # convert to transformation matrix
+    domain_trans = coefToMatrix(xcoef, ycoef)
+    
+    # create variables
+    xmin = 0
+    xmax = 0
+    ymin = 0
+    ymax = 0
     
     # recording: set to True whenever the points in the file are being recorded
     recording = False
@@ -29,9 +53,6 @@ def findCenter(fileName, obj):
         
         # if data points are being recorded from the trace file...
         if recording:
-            
-            # keep track of total points
-            total += 1
             
             # the first point starts with "points=" in the text file; remove this part
             if firstLine:
@@ -54,13 +75,29 @@ def findCenter(fileName, obj):
                 trans_mat = np.linalg.inv(np.array([[xcoef[1],xcoef[2],xcoef[0]],
                                       [ycoef[1],ycoef[2],ycoef[0]],
                                       [0,0,1]]))
-                trans_coords = np.matmul(trans_mat, coords_mat)
-                xsum += trans_coords[0][0]
-                ysum += trans_coords[1][0]
+                inv_domain_trans = np.linalg.inv(domain_trans)
+                trans_coords = np.matmul(inv_domain_trans, np.matmul(trans_mat, coords_mat))
+
+                # if no points recorded yet, set min and maxes
+                if xmin == 0 and xmax == 0 and ymin == 0 and ymax == 0:
+                    xmin = trans_coords[0][0]
+                    xmax = trans_coords[0][0]
+                    ymin = trans_coords[1][0]
+                    ymax = trans_coords[1][0]
+
+                # otherwise, check for min and max values for both x and y
+                else:
+                    if trans_coords[0][0] < xmin:
+                        xmin = trans_coords[0][0]
+                    elif trans_coords[0][0] > xmax:
+                        xmax = trans_coords[0][0]
+                    if trans_coords[1][0] < ymin:
+                        ymin = trans_coords[1][0]
+                    elif trans_coords[1][0] > ymax:
+                        ymax = trans_coords[1][0]
             
             # stop recording otherwise
             else:
-                total -= 1
                 recording = False
             
         # if not recording data points...
@@ -86,31 +123,32 @@ def findCenter(fileName, obj):
                 ycoef = [float(y) for y in lines[xcoefIndex+1].split()[1:4]]
     
     # if the trace is not found in the section
-    if total == 0:
-        return None, None
+    if xmin == 0 and xmax == 0 and ymin == 0 and ymax == 0:
+        return None
     
-    # return averages
-    return xsum/total, ysum/total
+    # return bounds
+    return xmin, xmax, ymin, ymax
 
 
-def fillInCenters(centers):
-    """Fills in center data where object doesn't exist with center data from previous sections."""
+def fillInBounds(bounds_dict):
+    """Fills in bounds data where object doesn't exist with bounds data from previous sections."""
     
     # if the first section(s) do not have the object, then fill it in with first object instance
     firstInstanceFound = False
-    prevCenter = (None, None)
-    for center in centers:
-        if centers[center] != (None, None) and not firstInstanceFound:
-            prevCenter = centers[center]
+    prevBounds = None
+    for bounds in bounds_dict:
+        if bounds_dict[bounds] != None and not firstInstanceFound:
+            prevBounds = bounds_dict[bounds]
             firstInstanceFound = True
     
-    # set any center points that are (None, None) to the previous center
-    for center in centers:
-        if centers[center] == (None, None):
-            centers[center] = prevCenter
-        prevCenter = centers[center]
+    # set any bounds points that are None to the previous bounds
+    for bounds in bounds_dict:
+        if bounds_dict[bounds] == None:
+            bounds_dict[bounds] = prevBounds
+        prevBounds = bounds_dict[bounds]
     
-    return centers
+    return bounds_dict
+
 
 
 def getSectionInfo(fileName):
@@ -406,7 +444,7 @@ def coefToMatrix(xcoef, ycoef):
                        [0, 0, 1]]))
 
 
-def getCropFocus(sectionFileName):
+def getCropFocus(sectionFileName, seriesName):
     """Find the current crop focus"""
 
     # open the section file
@@ -423,7 +461,7 @@ def getCropFocus(sectionFileName):
     # analyze the image file name
     if "/" in imageFile:
         folder = imageFile.split("/")[0]
-        cropFocus = folder[folder.rfind("_")+1:]
+        cropFocus = folder[folder.find(seriesName)+len(seriesName)+1:]
     else:
         cropFocus = ""
 
@@ -492,7 +530,7 @@ if fileName:
     seriesName, sectionNums = getSeriesInfo(fileName)
 
     # find the current crop focus
-    cropFocus = getCropFocus(seriesName + "." + str(sectionNums[0]))
+    cropFocus = getCropFocus(seriesName + "." + str(sectionNums[0]), seriesName)
     if cropFocus:
         print("This series is currently focused on: " + cropFocus)
     else:
@@ -513,35 +551,39 @@ if fileName:
             switchToOriginal(seriesName, cropFocus)
             print("Successfully set the original series as the focus.")
 
-    # if switching to existing crop
+    # if switching to crop
     else:
         if cropFocus == newFocus:
             print("\n" + newFocus + " is already set as the focus.")
+
+        # if crop does not exist
         elif not os.path.isdir(seriesName + "_" + newFocus):
             print("\nThis crop does not exist.")
             input("Press enter to create a new crop for this object (press Ctrl+c to exit).")
             obj = newFocus
+
+            
+            if cropFocus != "":
+                print("\nSwitching to original focus...")
+                switchToOriginal(seriesName, cropFocus)
+                print("Switched to original focus.")
+            
             print("\nLocating the object...")
 
-            centers = {}
+            bounds_dict = {}
             for sectionNum in sectionNums:
-                centers[sectionNum] = findCenter(seriesName + "." + str(sectionNum), obj)
+                bounds_dict[sectionNum] = findBounds(seriesName + "." + str(sectionNum), obj)
+            bounds_dict = fillInBounds(bounds_dict)
 
             # check to see if the object was found, raise exception if not
             noTraceFound = True
-            for center in centers:
-                if centers[center] != (None,None):
+            for bounds in bounds_dict:
+                if bounds_dict[bounds] != None:
                     noTraceFound = False
             if noTraceFound:
                 raise Exception("This trace does not exist in this series.")
 
-            centers = fillInCenters(centers)
-
             print("Completed successfully!")
-            
-            print("\nSwitching to original focus...")
-            switchToOriginal(seriesName, cropFocus)
-            print("Switched to original focus.")
 
             # get the original series images
             input("\nPress enter to select the original series images.")
@@ -577,13 +619,11 @@ if fileName:
                 
                 # shift the domain origins to bottom left corner of planned crop
                 orig_trans = coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1])
-                untransformedCenter = np.matmul(np.linalg.inv(orig_trans),
-                                                [[centers[sectionNum][0]],[centers[sectionNum][1]],[1]])
                 pixPerMic = 1.0 / sectionInfo[sectionNum][2]
-                xshift_pix = int((untransformedCenter[0][0] - rad) * pixPerMic)
+                xshift_pix = int((bounds_dict[sectionNum][0] - rad) * pixPerMic)
                 if xshift_pix < 0:
                     xshift_pix = 0
-                yshift_pix = int((untransformedCenter[1][0] - rad) * pixPerMic)
+                yshift_pix = int((bounds_dict[sectionNum][2] - rad) * pixPerMic)
                 if yshift_pix < 0:
                     yshift_pix = 0
                 newTransformationsFile.write("Section " + str(sectionNum) + "\n" +
@@ -598,7 +638,7 @@ if fileName:
 
             # Crop each image
 
-            print("\nCropping images around centers...")
+            print("\nCropping images around bounds...")
 
             for sectionNum in sectionNums:   
                     
@@ -615,19 +655,14 @@ if fileName:
                 # get magnification
                 pixPerMic = 1.0 / sectionInfo[sectionNum][2]
                 
-                # get the cropping radius in pixels
-                pixRad = rad * pixPerMic
-                
-                # get the center coordinates in pixels
+                # get the bounds coordinates in pixels
                 orig_trans = coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1])
-                untransformedCenter = np.matmul(np.linalg.inv(orig_trans),
-                                                [[centers[sectionNum][0]],[centers[sectionNum][1]],[1]])
-                
+
                 # get the pixel coordinates for each corner of the crop
-                left = int((untransformedCenter[0][0] - rad) * pixPerMic)
-                bottom = img_height - int((untransformedCenter[1][0] - rad) * pixPerMic)
-                right = int((untransformedCenter[0][0] + rad) * pixPerMic)
-                top = img_height - int((untransformedCenter[1][0] + rad) * pixPerMic)
+                left = int((bounds_dict[sectionNum][0] - rad) * pixPerMic)
+                bottom = img_height - int((bounds_dict[sectionNum][2] - rad) * pixPerMic)
+                right = int((bounds_dict[sectionNum][1] + rad) * pixPerMic)
+                top = img_height - int((bounds_dict[sectionNum][3] + rad) * pixPerMic)
 
                 # if crop exceeds image boundary, cut it off
                 if left < 0: left = 0

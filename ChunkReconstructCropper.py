@@ -39,9 +39,13 @@ def findBounds(fileName, obj):
     
     # create variables
     xmin = 0
+    xmin_idomain = 0
     xmax = 0
+    xmax_idomain = 0
     ymin = 0
+    ymin_idomain = 0
     ymax = 0
+    ymax_idomain = 0
     
     # recording: set to True whenever the points in the file are being recorded
     recording = False
@@ -76,7 +80,8 @@ def findBounds(fileName, obj):
                                       [ycoef[1],ycoef[2],ycoef[0]],
                                       [0,0,1]]))
                 inv_domain_trans = np.linalg.inv(domain_trans)
-                trans_coords = np.matmul(inv_domain_trans, np.matmul(trans_mat, coords_mat))
+                trans_coords = np.matmul(trans_mat, coords_mat)
+                trans_coords_idomain = np.matmul(inv_domain_trans, trans_coords)
 
                 # if no points recorded yet, set min and maxes
                 if xmin == 0 and xmax == 0 and ymin == 0 and ymax == 0:
@@ -84,17 +89,26 @@ def findBounds(fileName, obj):
                     xmax = trans_coords[0][0]
                     ymin = trans_coords[1][0]
                     ymax = trans_coords[1][0]
+                    
+                    xmin_idomain = trans_coords_idomain[0][0]
+                    xmax_idomain = trans_coords_idomain[0][0]
+                    ymin_idomain = trans_coords_idomain[1][0]
+                    ymax_idomain = trans_coords_idomain[1][0]
 
                 # otherwise, check for min and max values for both x and y
                 else:
-                    if trans_coords[0][0] < xmin:
+                    if trans_coords_idomain[0][0] < xmin_idomain:
                         xmin = trans_coords[0][0]
-                    elif trans_coords[0][0] > xmax:
+                        xmin_idomain = trans_coods_idomain[0][0]
+                    if trans_coords_idomain[0][0] > xmax_idomain:
                         xmax = trans_coords[0][0]
-                    if trans_coords[1][0] < ymin:
+                        xmax_idomain = trans_coods_idomain[0][0]
+                    if trans_coords_idomain[1][0] < ymin_idomain:
                         ymin = trans_coords[1][0]
-                    elif trans_coords[1][0] > ymax:
+                        ymin_idomain = trans_coods_idomain[1][0]
+                    if trans_coords_idomain[1][0] > ymax_idomain:
                         ymax = trans_coords[1][0]
+                        ymax_idomain = trans_coods_idomain[1][0]
             
             # stop recording otherwise
             else:
@@ -128,6 +142,7 @@ def findBounds(fileName, obj):
     
     # return bounds
     return xmin, xmax, ymin, ymax
+
 
 
 def fillInBounds(bounds_dict):
@@ -619,11 +634,12 @@ if fileName:
                 
                 # shift the domain origins to bottom left corner of planned crop
                 orig_trans = coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1])
+                min_coords = np.matmul(orig_trans, [[bounds_dict[sectionNum][0]],[bounds_dict[sectionNum][2]],[1]])
                 pixPerMic = 1.0 / sectionInfo[sectionNum][2]
-                xshift_pix = int((bounds_dict[sectionNum][0] - rad) * pixPerMic)
+                xshift_pix = int((min_coords[0][0] - rad) * pixPerMic)
                 if xshift_pix < 0:
                     xshift_pix = 0
-                yshift_pix = int((bounds_dict[sectionNum][2] - rad) * pixPerMic)
+                yshift_pix = int((min_coords[1][0] - rad) * pixPerMic)
                 if yshift_pix < 0:
                     yshift_pix = 0
                 newTransformationsFile.write("Section " + str(sectionNum) + "\n" +
@@ -657,13 +673,15 @@ if fileName:
                 
                 # get the bounds coordinates in pixels
                 orig_trans = coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1])
+                min_coords = np.matmul(orig_trans, [[bounds_dict[sectionNum][0]],[bounds_dict[sectionNum][2]],[1]])
+                max_coords = np.matmul(orig_trans, [[bounds_dict[sectionNum][1]],[bounds_dict[sectionNum][3]],[1]])
 
                 # get the pixel coordinates for each corner of the crop
-                left = int((bounds_dict[sectionNum][0] - rad) * pixPerMic)
-                bottom = img_height - int((bounds_dict[sectionNum][2] - rad) * pixPerMic)
-                right = int((bounds_dict[sectionNum][1] + rad) * pixPerMic)
-                top = img_height - int((bounds_dict[sectionNum][3] + rad) * pixPerMic)
-
+                left = int((min_coords[0][0] - rad) * pixPerMic)
+                bottom = img_height - int((min_coords[1][0] - rad) * pixPerMic)
+                right = int((max_coords[0][0] + rad) * pixPerMic)
+                top = img_height - int((max_coords[1][0] + rad) * pixPerMic)
+                
                 # if crop exceeds image boundary, cut it off
                 if left < 0: left = 0
                 if right >= img_length: right = img_length-1

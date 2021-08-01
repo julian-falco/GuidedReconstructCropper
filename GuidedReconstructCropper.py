@@ -139,7 +139,6 @@ def findBounds(fileName, obj):
         return None
     
     # return bounds
-    print(xmin, xmax, ymin, ymax)
     return xmin, xmax, ymin, ymax
 
 

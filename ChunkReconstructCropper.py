@@ -99,16 +99,16 @@ def findBounds(fileName, obj):
                 else:
                     if trans_coords_idomain[0][0] < xmin_idomain:
                         xmin = trans_coords[0][0]
-                        xmin_idomain = trans_coods_idomain[0][0]
+                        xmin_idomain = trans_coords_idomain[0][0]
                     if trans_coords_idomain[0][0] > xmax_idomain:
                         xmax = trans_coords[0][0]
-                        xmax_idomain = trans_coods_idomain[0][0]
+                        xmax_idomain = trans_coords_idomain[0][0]
                     if trans_coords_idomain[1][0] < ymin_idomain:
                         ymin = trans_coords[1][0]
-                        ymin_idomain = trans_coods_idomain[1][0]
+                        ymin_idomain = trans_coords_idomain[1][0]
                     if trans_coords_idomain[1][0] > ymax_idomain:
                         ymax = trans_coords[1][0]
-                        ymax_idomain = trans_coods_idomain[1][0]
+                        ymax_idomain = trans_coords_idomain[1][0]
             
             # stop recording otherwise
             else:
@@ -633,8 +633,8 @@ if fileName:
             for sectionNum in sectionNums:
                 
                 # shift the domain origins to bottom left corner of planned crop
-                orig_trans = coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1])
-                min_coords = np.matmul(orig_trans, [[bounds_dict[sectionNum][0]],[bounds_dict[sectionNum][2]],[1]])
+                inv_orig_trans = np.linalg.inv(coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1]))
+                min_coords = np.matmul(inv_orig_trans, [[bounds_dict[sectionNum][0]],[bounds_dict[sectionNum][2]],[1]])
                 pixPerMic = 1.0 / sectionInfo[sectionNum][2]
                 xshift_pix = int((min_coords[0][0] - rad) * pixPerMic)
                 if xshift_pix < 0:
@@ -672,9 +672,9 @@ if fileName:
                 pixPerMic = 1.0 / sectionInfo[sectionNum][2]
                 
                 # get the bounds coordinates in pixels
-                orig_trans = coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1])
-                min_coords = np.matmul(orig_trans, [[bounds_dict[sectionNum][0]],[bounds_dict[sectionNum][2]],[1]])
-                max_coords = np.matmul(orig_trans, [[bounds_dict[sectionNum][1]],[bounds_dict[sectionNum][3]],[1]])
+                inv_orig_trans = np.linalg.inv(coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1]))
+                min_coords = np.matmul(inv_orig_trans, [[bounds_dict[sectionNum][0]],[bounds_dict[sectionNum][2]],[1]])
+                max_coords = np.matmul(inv_orig_trans, [[bounds_dict[sectionNum][1]],[bounds_dict[sectionNum][3]],[1]])
 
                 # get the pixel coordinates for each corner of the crop
                 left = int((min_coords[0][0] - rad) * pixPerMic)

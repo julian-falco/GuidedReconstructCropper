@@ -1,11 +1,72 @@
-from PIL import Image as PILImage
-PILImage.MAX_IMAGE_PIXELS = None
+print("Getting modules...")
+
+import sys
 import os
-import numpy as np
-from tkinter import *
-from tkinter.filedialog import askopenfilename, askopenfilenames
 
+for p in sys.path:
+    if "site-packages" in p:
+        module_dir = p
 
+if not module_dir:
+    raise Exception("There is no site-packages folder located on the path.")
+
+else:
+
+    needs_import = False
+
+    try:
+        import numpy as np
+        numpy_bat = ""
+    except ModuleNotFoundError:
+        needs_import = True
+        print("\nThe numpy module is not found in the current path.")
+        numpy_bat = "pip install numpy --target " + module_dir + "\n"
+
+    try:
+        from tkinter import *
+        from tkinter.filedialog import askopenfilename, askopenfilenames, askdirectory
+        tkinter_bat = ""
+    except ModuleNotFoundError:
+        needs_import = True
+        print("\nThe tkinter module is not found in the current path.")
+        tkinter_bat = "pip install tk --target " + module_dir + "\n"
+
+    try:
+        from PIL import Image as PILImage
+        PILImage.MAX_IMAGE_PIXELS = None
+        Pillow_bat = ""
+    except ModuleNotFoundError:
+        needs_import = True
+        print("\nThe Pillow module is not found in the current path.")
+        Pillow_bat = "pip install Pillow --target " + module_dir + "\n"
+
+if not needs_import:
+    print("\nAll required modules have been successfully located.")
+else:
+    bat = open("InstallModules.bat", "w")
+    bat.write(numpy_bat)
+    bat.write(tkinter_bat)
+    bat.write(Pillow_bat)
+    bat.close()
+
+    print("\nOpening Command Prompt to install required modules...")
+    
+    import subprocess
+    subprocess.call(["InstallModules.bat"])
+    os.remove("InstallModules.bat")
+
+    print("\nThe necessary modules have been automatically installed.")
+
+    if numpy_bat:
+        import numpy as np
+    if tkinter_bat:
+        from tkinter import *
+        from tkinter.filedialog import askopenfilename, askopenfilenames, askdirectory
+    if Pillow_bat:
+        from PIL import Image as PILImage
+        PILImage.MAX_IMAGE_PIXELS = None
+
+    
 def findBounds(fileName, obj):
     """Finds the bounds of a specified object on a single trace file."""
     
@@ -531,735 +592,761 @@ def ynInput(inputStr):
 
 
 # BEGINNING OF MAIN: gather inputs
-##try:
+    
+try:
 
-# locate the series file and gather pertinent info
-print("Locating series file...")
-fileName = ""
-for file in os.listdir("."):
-    if file.endswith(".ser"):
-        fileName = str(file)
+    # determine if application is a script file or frozen exe
+    if getattr(sys, 'frozen', False):
+        application_path = os.path.dirname(sys.executable)
+    elif __file__:
+        application_path = os.path.dirname(__file__)
 
-# switch crops if there is an existing series file
-if fileName:
-    seriesName, sectionNums = getSeriesInfo(fileName)
+    config_path = os.path.join(application_path)
+    
+    print("\nCurrent working directory: " + os.getcwd())
 
-    # find the current crop focus
-    cropFocus = getCropFocus(seriesName + "." + str(sectionNums[0]), seriesName)
-    if cropFocus:
-        print("This series is currently focused on: " + cropFocus)
-    else:
-        print("This series is currently set to the original set of images.")
+    change = ynInput("Would you like to change the working directory? (y/n): ")
 
-    # gather inputs
-    print("\nPlease enter the coordinates or object you would like to focus on.")
-    newFocus = input("(x,y with no spaces or parentheses): ")
-
-    # if switching to original
-    if newFocus == "":
-        if cropFocus == "":
-            print("\nThe original series is already set as the focus.")
-        else:
-            print("\nWould you like to switch to the original series?")
-            input("Press enter to continue or Ctrl+c to exit.")
-            print("\nSwitching to original series...")
-            switchToOriginal(seriesName, cropFocus)
-            print("Successfully set the original series as the focus.")
-
-    # if switching to crop
-    else:
-        if cropFocus == newFocus:
-            print("\n" + newFocus + " is already set as the focus.")
-
-        # if crop does not exist
-        elif not os.path.isdir(seriesName + "_" + newFocus):
-            print("\nThis crop does not exist.")
-            input("Press enter to create a new crop for this object (press Ctrl+c to exit).")
-            obj = newFocus
-
-            
-            if cropFocus != "":
-                print("\nSwitching to original focus...")
-                switchToOriginal(seriesName, cropFocus)
-                print("Switched to original focus.")
-            
-            print("\nLocating the object...")
-
-            bounds_dict = {}
-            for sectionNum in sectionNums:
-                bounds_dict[sectionNum] = findBounds(seriesName + "." + str(sectionNum), obj)
-            bounds_dict = fillInBounds(bounds_dict)
-
-            # check to see if the object was found, raise exception if not
-            noTraceFound = True
-            for bounds in bounds_dict:
-                if bounds_dict[bounds] != None:
-                    noTraceFound = False
-            if noTraceFound:
-                raise Exception("This trace does not exist in this series.")
-
-            print("Completed successfully!")
-
-            # get the original series images
-            input("\nPress enter to select the original series images.")
-
-            root = Tk()
-            root.attributes("-topmost", True)
-            root.withdraw()
-            
-            imageFiles = list(askopenfilenames(title="Select Image Files",
-                                       filetypes=(("Image Files", "*.tif"),
-                                                  ("All Files","*.*"))))
-            if len(imageFiles) == 0:
-                raise Exception("No pictures were selected.")
-
-            
-            # ask the user for the cropping rad
-            rad = floatInput("\nWhat is the cropping radius in microns?: ")
-
-            newLocation = seriesName + "_" + obj
-            os.mkdir(newLocation)
-            
-            sectionInfo = {}
-            for sectionNum in sectionNums:
-                sectionInfo[sectionNum] = getSectionInfo(seriesName + "." + str(sectionNum))
-
-            # Create new trace files with shift domain origins
-
-            print("\nCreating new domain origins file...")
-
-            newTransformationsFile = open(newLocation + "/LOCAL_TRANSFORMATIONS.txt", "w")
-
-            for sectionNum in sectionNums:
-                
-                # shift the domain origins to bottom left corner of planned crop
-                inv_orig_trans = np.linalg.inv(coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1]))
-                min_coords = np.matmul(inv_orig_trans, [[bounds_dict[sectionNum][0]],[bounds_dict[sectionNum][2]],[1]])
-                pixPerMic = 1.0 / sectionInfo[sectionNum][2]
-                xshift_pix = int((min_coords[0][0] - rad) * pixPerMic)
-                if xshift_pix < 0:
-                    xshift_pix = 0
-                yshift_pix = int((min_coords[1][0] - rad) * pixPerMic)
-                if yshift_pix < 0:
-                    yshift_pix = 0
-                newTransformationsFile.write("Section " + str(sectionNum) + "\n" +
-                                             "xshift: " + str(xshift_pix) + "\n" +
-                                             "yshift: " + str(yshift_pix) + "\n" +
-                                             "Dtrans: 1 0 0 0 1 0\n")
-
-            newTransformationsFile.close()
-
-            print("LOCAL_TRANSFORMATIONS.txt has been stored.")
-            print("Do NOT delete this file.")
-
-            # Crop each image
-
-            print("\nCropping images around bounds...")
-
-            for sectionNum in sectionNums:   
-                    
-                fileName = imageFiles[sectionNum]
-
-                print("\nWorking on " + fileName + "...")
-                
-                # open original image
-                img = PILImage.open(fileName)
-
-                # get image dimensions
-                img_length, img_height = img.size
-                
-                # get magnification
-                pixPerMic = 1.0 / sectionInfo[sectionNum][2]
-                
-                # get the bounds coordinates in pixels
-                inv_orig_trans = np.linalg.inv(coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1]))
-                min_coords = np.matmul(inv_orig_trans, [[bounds_dict[sectionNum][0]],[bounds_dict[sectionNum][2]],[1]])
-                max_coords = np.matmul(inv_orig_trans, [[bounds_dict[sectionNum][1]],[bounds_dict[sectionNum][3]],[1]])
-
-                # get the pixel coordinates for each corner of the crop
-                left = int((min_coords[0][0] - rad) * pixPerMic)
-                bottom = img_height - int((min_coords[1][0] - rad) * pixPerMic)
-                right = int((max_coords[0][0] + rad) * pixPerMic)
-                top = img_height - int((max_coords[1][0] + rad) * pixPerMic)
-                
-                # if crop exceeds image boundary, cut it off
-                if left < 0: left = 0
-                if right >= img_length: right = img_length-1
-                if top < 0: top = 0
-                if bottom >= img_height: bottom = img_height-1
-
-                # crop the photo
-                cropped = img.crop((left, top, right, bottom))
-                cropped.save(newLocation + "/" + seriesName + "." + str(sectionNum) + ".tif")
-                
-                print("Saved!")
-
-            print("\nCropping has run successfully!")
-
-            print("\nSwitching to new crop...")
-            switchToCrop(seriesName, obj)
-
-            print("Successfully set " + obj + " as the focus.")
+    if change:
+        input("Press enter to select the new working directory.")
         
+        root = Tk()
+        root.attributes("-topmost", True)
+        root.withdraw()
+        
+        os.chdir(askdirectory(title="Select Folder"))
+
+    # locate the series file and gather pertinent info
+    print("\nLocating series file...")
+    fileName = ""
+    for file in os.listdir("."):
+        if file.endswith(".ser"):
+            fileName = str(file)
+
+    # switch crops if there is an existing series file
+    if fileName:
+        seriesName, sectionNums = getSeriesInfo(fileName)
+
+        # find the current crop focus
+        cropFocus = getCropFocus(seriesName + "." + str(sectionNums[0]), seriesName)
+        if cropFocus:
+            print("This series is currently focused on: " + cropFocus)
         else:
-            if cropFocus != "":
-                # switch to the original crop if not already on
-                print("\nSwitching to original crop focus to prepare...")
+            print("This series is currently set to the original set of images.")
+
+        # gather inputs
+        print("\nPlease enter the coordinates or object you would like to focus on.")
+        newFocus = input("(x,y with no spaces or parentheses): ")
+
+        # if switching to original
+        if newFocus == "":
+            if cropFocus == "":
+                print("\nThe original series is already set as the focus.")
+            else:
+                print("\nWould you like to switch to the original series?")
+                input("Press enter to continue or Ctrl+c to exit.")
+                print("\nSwitching to original series...")
                 switchToOriginal(seriesName, cropFocus)
                 print("Successfully set the original series as the focus.")
-            input("\nPress enter to continue and switch cropping focus to " + newFocus)
-            print("\nSwitching to " + newFocus + "...")
-            switchToCrop(seriesName, newFocus)
-            print("Successfully set " + newFocus + " as the focus.")
+
+        # if switching to crop
+        else:
+            if cropFocus == newFocus:
+                print("\n" + newFocus + " is already set as the focus.")
+
+            # if crop does not exist
+            elif not os.path.isdir(seriesName + "_" + newFocus):
+                print("\nThis crop does not exist.")
+                input("Press enter to create a new crop for this object (press Ctrl+c to exit).")
+                obj = newFocus
+
+                
+                if cropFocus != "":
+                    print("\nSwitching to original focus...")
+                    switchToOriginal(seriesName, cropFocus)
+                    print("Switched to original focus.")
+                
+                print("\nLocating the object...")
+
+                bounds_dict = {}
+                for sectionNum in sectionNums:
+                    bounds_dict[sectionNum] = findBounds(seriesName + "." + str(sectionNum), obj)
+                bounds_dict = fillInBounds(bounds_dict)
+
+                # check to see if the object was found, raise exception if not
+                noTraceFound = True
+                for bounds in bounds_dict:
+                    if bounds_dict[bounds] != None:
+                        noTraceFound = False
+                if noTraceFound:
+                    raise Exception("This trace does not exist in this series.")
+
+                print("Completed successfully!")
+
+                # get the original series images
+                input("\nPress enter to select the original series images.")
+
+                root = Tk()
+                root.attributes("-topmost", True)
+                root.withdraw()
+                
+                imageFiles = list(askopenfilenames(title="Select Image Files",
+                                           filetypes=(("Image Files", "*.tif"),
+                                                      ("All Files","*.*"))))
+                if len(imageFiles) == 0:
+                    raise Exception("No pictures were selected.")
+
+                
+                # ask the user for the cropping rad
+                rad = floatInput("\nWhat is the cropping radius in microns?: ")
+
+                newLocation = seriesName + "_" + obj
+                os.mkdir(newLocation)
+                
+                sectionInfo = {}
+                for sectionNum in sectionNums:
+                    sectionInfo[sectionNum] = getSectionInfo(seriesName + "." + str(sectionNum))
+
+                # Create new trace files with shift domain origins
+
+                print("\nCreating new domain origins file...")
+
+                newTransformationsFile = open(newLocation + "/LOCAL_TRANSFORMATIONS.txt", "w")
+
+                for sectionNum in sectionNums:
+                    
+                    # shift the domain origins to bottom left corner of planned crop
+                    inv_orig_trans = np.linalg.inv(coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1]))
+                    min_coords = np.matmul(inv_orig_trans, [[bounds_dict[sectionNum][0]],[bounds_dict[sectionNum][2]],[1]])
+                    pixPerMic = 1.0 / sectionInfo[sectionNum][2]
+                    xshift_pix = int((min_coords[0][0] - rad) * pixPerMic)
+                    if xshift_pix < 0:
+                        xshift_pix = 0
+                    yshift_pix = int((min_coords[1][0] - rad) * pixPerMic)
+                    if yshift_pix < 0:
+                        yshift_pix = 0
+                    newTransformationsFile.write("Section " + str(sectionNum) + "\n" +
+                                                 "xshift: " + str(xshift_pix) + "\n" +
+                                                 "yshift: " + str(yshift_pix) + "\n" +
+                                                 "Dtrans: 1 0 0 0 1 0\n")
+
+                newTransformationsFile.close()
+
+                print("LOCAL_TRANSFORMATIONS.txt has been stored.")
+                print("Do NOT delete this file.")
+
+                # Crop each image
+
+                print("\nCropping images around bounds...")
+
+                for sectionNum in sectionNums:   
+                        
+                    fileName = imageFiles[sectionNum]
+
+                    print("\nWorking on " + fileName + "...")
+                    
+                    # open original image
+                    img = PILImage.open(fileName)
+
+                    # get image dimensions
+                    img_length, img_height = img.size
+                    
+                    # get magnification
+                    pixPerMic = 1.0 / sectionInfo[sectionNum][2]
+                    
+                    # get the bounds coordinates in pixels
+                    inv_orig_trans = np.linalg.inv(coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1]))
+                    min_coords = np.matmul(inv_orig_trans, [[bounds_dict[sectionNum][0]],[bounds_dict[sectionNum][2]],[1]])
+                    max_coords = np.matmul(inv_orig_trans, [[bounds_dict[sectionNum][1]],[bounds_dict[sectionNum][3]],[1]])
+
+                    # get the pixel coordinates for each corner of the crop
+                    left = int((min_coords[0][0] - rad) * pixPerMic)
+                    bottom = img_height - int((min_coords[1][0] - rad) * pixPerMic)
+                    right = int((max_coords[0][0] + rad) * pixPerMic)
+                    top = img_height - int((max_coords[1][0] + rad) * pixPerMic)
+                    
+                    # if crop exceeds image boundary, cut it off
+                    if left < 0: left = 0
+                    if right >= img_length: right = img_length-1
+                    if top < 0: top = 0
+                    if bottom >= img_height: bottom = img_height-1
+
+                    # crop the photo
+                    cropped = img.crop((left, top, right, bottom))
+                    cropped.save(newLocation + "/" + seriesName + "." + str(sectionNum) + ".tif")
+                    
+                    print("Saved!")
+
+                print("\nCropping has run successfully!")
+
+                print("\nSwitching to new crop...")
+                switchToCrop(seriesName, obj)
+
+                print("Successfully set " + obj + " as the focus.")
+            
+            else:
+                if cropFocus != "":
+                    # switch to the original crop if not already on
+                    print("\nSwitching to original crop focus to prepare...")
+                    switchToOriginal(seriesName, cropFocus)
+                    print("Successfully set the original series as the focus.")
+                input("\nPress enter to continue and switch cropping focus to " + newFocus)
+                print("\nSwitching to " + newFocus + "...")
+                switchToCrop(seriesName, newFocus)
+                print("Successfully set " + newFocus + " as the focus.")
 
 
-# cropping a new set of images if there is no detected series file
-else:
-    print("\nThere does not appear to be an existing series.")
-    seriesName = input("\nPlease enter the desired name for the series: ")
-    input("\nPress enter to select the pictures you would like to crop.")
-
-    root = Tk()
-    root.attributes("-topmost", True)
-    root.withdraw()
-    
-    imageFiles = list(askopenfilenames(title="Select Image Files",
-                               filetypes=(("Image Files", "*.tif"),
-                                          ("All Files","*.*"))))
-    if len(imageFiles) == 0:
-                raise Exception("No pictures were selected.")
-    
-    xchunks = intInput("\nHow many horizontal chunks would you like to have?: ")
-    ychunks = intInput("How many vertical chunks would you like to have?: ")
-
-    micPerPix = floatInput("\nHow many microns per pixel are there for this series?: ")
-    sectionThickness = floatInput("What would you like to set as the section thickness?: ")
-    overlap = floatInput("How many microns of overlap should there be between chunks?: ")
-
-    isTrans = ynInput("\nIs there an existing transformation file for this series? (y/n): ")
-
-    if isTrans:
-        input("Press enter to select the file containing the transformations.")
-        baseTransformations = askopenfilename(title="Select Transformation File",
-                               filetypes=(("Data File", "*.dat"),
-                                          ("All Files","*.*")))
-
-    # store domain transformation for each of the sections and store them in a text file
-    origTransFile = open("ORIGINAL_TRANSFORMATIONS.txt", "w")
-    
-    if isTrans:
-        print("\nIdentifying and storing original transformations...")
-        baseTransFile = open(baseTransformations, "r")
-        for line in baseTransFile.readlines():
-            splitLine = line.split()
-            sectionNum = int(splitLine[0])
-            matrixLine = [float(num) for num in splitLine[1:7]]
-            transMatrix = [[matrixLine[0],matrixLine[1],matrixLine[2]],
-                           [matrixLine[3],matrixLine[4],matrixLine[5]],
-                           [0,0,1]]
-            transMatrix[0][2] *= micPerPix
-            transMatrix[1][2] *= micPerPix
-            itransMatrix = np.linalg.inv(transMatrix)
-            origTransFile.write("Section " + str(sectionNum) + "\n" +
-                                "xcoef: " + str(itransMatrix[0][2]) + " " + str(itransMatrix[0][0]) +
-                                " " + str(itransMatrix[0][1]) + " 0 0 0\n" +
-                                "xcoef: " + str(itransMatrix[1][2]) + " " + str(itransMatrix[1][0]) +
-                                " " + str(itransMatrix[1][1]) + " 0 0 0\n")
-        
+    # cropping a new set of images if there is no detected series file
     else:
-        origTransFile = open("ORIGINAL_TRANSFORMATIONS.txt", "w")
-        for i in range(len(imageFiles)):
-            origTransFile.write("Section " + str(i) + "\n" +
-                                      "xcoef: 0 1 0 0 0 0\n" +
-                                      "ycoef: 0 0 1 0 0 0\n")        
+        print("\nThere does not appear to be an existing series.")
+        seriesName = input("\nPlease enter the desired name for the series: ")
+        input("\nPress enter to select the pictures you would like to crop.")
 
-    origTransFile.close()
-
-    print("ORIGINAL_TRANSFORMATIONS.txt has been stored.")
-    print("Do NOT delete this file.")
-
-    # create each folder
-    print("\nCreating folders...")
-    for x in range(xchunks):
-        for y in range(ychunks):
-            os.mkdir(seriesName + "_" + str(x) + "," + str(y))
-
-    # store new domain origins
-    newDomainOrigins = []
-
-    # store max image length and height
-    img_length_max = 0
-    img_height_max = 0
-
-    # start iterating through each of the images
-    for i in range(len(imageFiles)):
-
-        print("\nWorking on " + imageFiles[i][imageFiles[i].rfind("/")+1:] + "...")
-
-        # open image and get dimensions
-        img = PILImage.open(imageFiles[i])
-        img_length, img_height = img.size
-        if img_length > img_length_max:
-            img_length_max = img_length
-        if img_height > img_height_max:
-            img_height_max = img_height
+        root = Tk()
+        root.attributes("-topmost", True)
+        root.withdraw()
         
-        # iterate through each chunk and calculate the coords for each of the corners
+        imageFiles = list(askopenfilenames(title="Select Image Files",
+                                   filetypes=(("Image Files", "*.tif"),
+                                              ("All Files","*.*"))))
+        if len(imageFiles) == 0:
+                    raise Exception("No pictures were selected.")
+        
+        xchunks = intInput("\nHow many horizontal chunks would you like to have?: ")
+        ychunks = intInput("How many vertical chunks would you like to have?: ")
+
+        micPerPix = floatInput("\nHow many microns per pixel are there for this series?: ")
+        sectionThickness = floatInput("What would you like to set as the section thickness?: ")
+        overlap = floatInput("How many microns of overlap should there be between chunks?: ")
+
+        isTrans = ynInput("\nIs there an existing transformation file for this series? (y/n): ")
+
+        if isTrans:
+            input("Press enter to select the file containing the transformations.")
+            baseTransformations = askopenfilename(title="Select Transformation File",
+                                   filetypes=(("Data File", "*.dat"),
+                                              ("All Files","*.*")))
+
+        # store domain transformation for each of the sections and store them in a text file
+        origTransFile = open("ORIGINAL_TRANSFORMATIONS.txt", "w")
+        
+        if isTrans:
+            print("\nIdentifying and storing original transformations...")
+            baseTransFile = open(baseTransformations, "r")
+            for line in baseTransFile.readlines():
+                splitLine = line.split()
+                sectionNum = int(splitLine[0])
+                matrixLine = [float(num) for num in splitLine[1:7]]
+                transMatrix = [[matrixLine[0],matrixLine[1],matrixLine[2]],
+                               [matrixLine[3],matrixLine[4],matrixLine[5]],
+                               [0,0,1]]
+                transMatrix[0][2] *= micPerPix
+                transMatrix[1][2] *= micPerPix
+                itransMatrix = np.linalg.inv(transMatrix)
+                origTransFile.write("Section " + str(sectionNum) + "\n" +
+                                    "xcoef: " + str(itransMatrix[0][2]) + " " + str(itransMatrix[0][0]) +
+                                    " " + str(itransMatrix[0][1]) + " 0 0 0\n" +
+                                    "xcoef: " + str(itransMatrix[1][2]) + " " + str(itransMatrix[1][0]) +
+                                    " " + str(itransMatrix[1][1]) + " 0 0 0\n")
+            
+        else:
+            origTransFile = open("ORIGINAL_TRANSFORMATIONS.txt", "w")
+            for i in range(len(imageFiles)):
+                origTransFile.write("Section " + str(i) + "\n" +
+                                          "xcoef: 0 1 0 0 0 0\n" +
+                                          "ycoef: 0 0 1 0 0 0\n")        
+
+        origTransFile.close()
+
+        print("ORIGINAL_TRANSFORMATIONS.txt has been stored.")
+        print("Do NOT delete this file.")
+
+        # create each folder
+        print("\nCreating folders...")
         for x in range(xchunks):
-            newDomainOrigins.append([])
             for y in range(ychunks):
-                
-                left = int((img_length-1) * x / xchunks - overlap/2 / micPerPix)
-                if left < 0:
-                    left = 0
-                right = int((img_length-1) * (x+1) / xchunks + overlap/2 / micPerPix)
-                if right >= img_length:
-                    right = img_length - 1
-                
-                top = int((img_height-1) * (ychunks - y-1) / ychunks - overlap/2 / micPerPix)
-                if top < 0:
-                      top = 0 
-                bottom = int((img_height-1) * (ychunks - y) / ychunks + overlap/2 / micPerPix)
-                if bottom >= img_height:
-                    bottom = img_height - 1
+                os.mkdir(seriesName + "_" + str(x) + "," + str(y))
 
-                # crop the photo
-                cropped = img.crop((left, top, right, bottom))
-                
-                newDomainOrigins[x].append((left,
-                                            int(img_height-1 - bottom)))
+        # store new domain origins
+        newDomainOrigins = []
 
-                # save as uncompressed TIF
-                cropped.save(seriesName + "_" + str(x) + "," + str(y) + "/" +
-                         seriesName + "." + str(i) + ".tif")
+        # store max image length and height
+        img_length_max = 0
+        img_height_max = 0
 
+        # start iterating through each of the images
+        for i in range(len(imageFiles)):
+
+            print("\nWorking on " + imageFiles[i][imageFiles[i].rfind("/")+1:] + "...")
+
+            # open image and get dimensions
+            img = PILImage.open(imageFiles[i])
+            img_length, img_height = img.size
+            if img_length > img_length_max:
+                img_length_max = img_length
+            if img_height > img_height_max:
+                img_height_max = img_height
+            
+            # iterate through each chunk and calculate the coords for each of the corners
+            for x in range(xchunks):
+                newDomainOrigins.append([])
+                for y in range(ychunks):
+                    
+                    left = int((img_length-1) * x / xchunks - overlap/2 / micPerPix)
+                    if left < 0:
+                        left = 0
+                    right = int((img_length-1) * (x+1) / xchunks + overlap/2 / micPerPix)
+                    if right >= img_length:
+                        right = img_length - 1
+                    
+                    top = int((img_height-1) * (ychunks - y-1) / ychunks - overlap/2 / micPerPix)
+                    if top < 0:
+                          top = 0 
+                    bottom = int((img_height-1) * (ychunks - y) / ychunks + overlap/2 / micPerPix)
+                    if bottom >= img_height:
+                        bottom = img_height - 1
+
+                    # crop the photo
+                    cropped = img.crop((left, top, right, bottom))
+                    
+                    newDomainOrigins[x].append((left,
+                                                int(img_height-1 - bottom)))
+
+                    # save as uncompressed TIF
+                    cropped.save(seriesName + "_" + str(x) + "," + str(y) + "/" +
+                             seriesName + "." + str(i) + ".tif")
+
+            print("Completed!")
+
+        # Create new local transformations files
+
+        print("\nStoring new transformation data...")
+
+        for x in range(xchunks):
+            for y in range(ychunks):
+                newTransformationsFile = open(seriesName + "_" + str(x) + "," + str(y) +
+                                             "/LOCAL_TRANSFORMATIONS.txt", "w")
+                for i in range(len(imageFiles)):
+                    
+                    # shift the domain origins to bottom left corner of planned crop
+                    xshift_pix = newDomainOrigins[x][y][0]
+                    yshift_pix = newDomainOrigins[x][y][1]
+                    newTransformationsFile.write("Section " + str(i) + "\n" +
+                                                 "xshift: " + str(xshift_pix) + "\n" +
+                                                 "yshift: " + str(yshift_pix) + "\n" +
+                                                 "Dtrans: 1 0 0 0 1 0\n")
+                newTransformationsFile.close()
+
+        print("LOCAL_TRANSFORMATIONS.txt has been stored in each folder.")
+        print("Do NOT delete this file.")
+                      
+
+        # create blank section and series files
+
+        print("\nCreating new section and series files...")
+        
+        blankSectionFile = """<?xml version="1.0"?>
+    <!DOCTYPE Section SYSTEM "section.dtd">
+    <Section index="[SECTION_INDEX]" thickness="[SECTION_THICKNESS]" alignLocked="false">
+    <Transform dim="[TRANSFORM_DIM]"
+     xcoef="[XCOEF]"
+     ycoef="[YCOEF]">
+    <Image mag="[IMAGE_MAG]" contrast="1" brightness="0" red="true" green="true" blue="true"
+     src="[IMAGE_SOURCE]" />
+    <Contour name="domain1" hidden="false" closed="true" simplified="false" border="1 0 1" fill="1 0 1" mode="11"
+     points="0 0,
+            [IMAGE_LENGTH] 0,
+            [IMAGE_LENGTH] [IMAGE_HEIGHT],
+            0 [IMAGE_HEIGHT],
+            "/>
+    </Transform>
+    </Section>"""
+
+        blankSectionFile = blankSectionFile.replace("[SECTION_THICKNESS]", str(sectionThickness))
+        blankSectionFile = blankSectionFile.replace("[TRANSFORM_DIM]", "3")
+
+        blankSectionFile = blankSectionFile.replace("[IMAGE_MAG]", str(micPerPix))
+        blankSectionFile = blankSectionFile.replace("[IMAGE_LENGTH]", str(int(img_length_max)))
+        blankSectionFile = blankSectionFile.replace("[IMAGE_HEIGHT]", str(int(img_height_max)))
+
+        
+        origTrans = open("ORIGINAL_TRANSFORMATIONS.txt", "r")
+        
+        for i in range(len(imageFiles)):
+            newSectionFile = open(seriesName + "." + str(i), "w")
+
+            # retrieve original transformations
+            origTrans.readline()
+            xcoef_data = origTrans.readline()
+            xcoef_str = xcoef_data[xcoef_data.find(":")+1 : xcoef_data.find("\n")]
+            ycoef_data = origTrans.readline()
+            ycoef_str = ycoef_data[ycoef_data.find(":")+1 : ycoef_data.find("\n")]
+
+            sectionFileText = blankSectionFile.replace("[SECTION_INDEX]", str(i))
+            sectionFileText = sectionFileText.replace("[IMAGE_SOURCE]", seriesName + "." + str(i) + ".tif")
+            sectionFileText = sectionFileText.replace("[XCOEF]", xcoef_str)
+            sectionFileText = sectionFileText.replace("[YCOEF]", ycoef_str)
+
+            newSectionFile.write(sectionFileText)
+            newSectionFile.close()
+
+        blankSeriesFile = """<?xml version="1.0"?>
+    <!DOCTYPE Series SYSTEM "series.dtd">
+    <Series index="0" viewport="0 0 0.00254"
+            units="microns"
+            autoSaveSeries="true"
+            autoSaveSection="true"
+            warnSaveSection="true"
+            beepDeleting="true"
+            beepPaging="true"
+            hideTraces="false"
+            unhideTraces="false"
+            hideDomains="false"
+            unhideDomains="false"
+            useAbsolutePaths="false"
+            defaultThickness="0.05"
+            zMidSection="false"
+            thumbWidth="128"
+            thumbHeight="96"
+            fitThumbSections="false"
+            firstThumbSection="1"
+            lastThumbSection="2147483647"
+            skipSections="1"
+            displayThumbContours="true"
+            useFlipbookStyle="false"
+            flipRate="5"
+            useProxies="true"
+            widthUseProxies="2048"
+            heightUseProxies="1536"
+            scaleProxies="0.25"
+            significantDigits="6"
+            defaultBorder="1.000 0.000 1.000"
+            defaultFill="1.000 0.000 1.000"
+            defaultMode="9"
+            defaultName="domain$+"
+            defaultComment=""
+            listSectionThickness="true"
+            listDomainSource="true"
+            listDomainPixelsize="true"
+            listDomainLength="false"
+            listDomainArea="false"
+            listDomainMidpoint="false"
+            listTraceComment="true"
+            listTraceLength="false"
+            listTraceArea="true"
+            listTraceCentroid="false"
+            listTraceExtent="false"
+            listTraceZ="false"
+            listTraceThickness="false"
+            listObjectRange="true"
+            listObjectCount="true"
+            listObjectSurfarea="false"
+            listObjectFlatarea="false"
+            listObjectVolume="false"
+            listZTraceNote="true"
+            listZTraceRange="true"
+            listZTraceLength="true"
+            borderColors="0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    "
+            fillColors="0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    0.000 0.000 0.000,
+                    "
+            offset3D="0 0 0"
+            type3Dobject="0"
+            first3Dsection="1"
+            last3Dsection="2147483647"
+            max3Dconnection="-1"
+            upper3Dfaces="true"
+            lower3Dfaces="true"
+            faceNormals="false"
+            vertexNormals="true"
+            facets3D="8"
+            dim3D="-1 -1 -1"
+            gridType="0"
+            gridSize="1 1"
+            gridDistance="1 1"
+            gridNumber="1 1"
+            hueStopWhen="3"
+            hueStopValue="50"
+            satStopWhen="3"
+            satStopValue="50"
+            brightStopWhen="0"
+            brightStopValue="100"
+            tracesStopWhen="false"
+            areaStopPercent="999"
+            areaStopSize="0"
+            ContourMaskWidth="0"
+            smoothingLength="7"
+            mvmtIncrement="0.022 1 1 1.01 1.01 0.02 0.02 0.001 0.001"
+            ctrlIncrement="0.0044 0.01 0.01 1.002 1.002 0.004 0.004 0.0002 0.0002"
+            shiftIncrement="0.11 100 100 1.05 1.05 0.1 0.1 0.005 0.005"
+            >
+    <Contour name="a$+" closed="true" border="1.000 0.500 0.000" fill="1.000 0.500 0.000" mode="13"
+     points="-3 1,
+            -3 -1,
+            -1 -3,
+            1 -3,
+            3 -1,
+            3 1,
+            1 3,
+            -1 3,
+            "/>
+    <Contour name="b$+" closed="true" border="0.500 0.000 1.000" fill="0.500 0.000 1.000" mode="13"
+     points="-2 1,
+            -5 0,
+            -2 -1,
+            -4 -4,
+            -1 -2,
+            0 -5,
+            1 -2,
+            4 -4,
+            2 -1,
+            5 0,
+            2 1,
+            4 4,
+            1 2,
+            0 5,
+            -1 2,
+            -4 4,
+            "/>
+    <Contour name="pink$+" closed="true" border="1.000 0.000 0.500" fill="1.000 0.000 0.500" mode="-13"
+     points="-6 -6,
+            6 -6,
+            0 5,
+            "/>
+    <Contour name="X$+" closed="true" border="1.000 0.000 0.000" fill="1.000 0.000 0.000" mode="-13"
+     points="-7 7,
+            -2 0,
+            -7 -7,
+            -4 -7,
+            0 -1,
+            4 -7,
+            7 -7,
+            2 0,
+            7 7,
+            4 7,
+            0 1,
+            -4 7,
+            "/>
+    <Contour name="yellow$+" closed="true" border="1.000 1.000 0.000" fill="1.000 1.000 0.000" mode="-13"
+     points="8 8,
+            8 -8,
+            -8 -8,
+            -8 6,
+            -10 8,
+            -10 -10,
+            10 -10,
+            10 10,
+            -10 10,
+            -8 8,
+            "/>
+    <Contour name="blue$+" closed="true" border="0.000 0.000 1.000" fill="0.000 0.000 1.000" mode="9"
+     points="0 7,
+            -7 0,
+            0 -7,
+            7 0,
+            "/>
+    <Contour name="magenta$+" closed="true" border="1.000 0.000 1.000" fill="1.000 0.000 1.000" mode="9"
+     points="-6 2,
+            -6 -2,
+            -2 -6,
+            2 -6,
+            6 -2,
+            6 2,
+            2 6,
+            -2 6,
+            "/>
+    <Contour name="red$+" closed="true" border="1.000 0.000 0.000" fill="1.000 0.000 0.000" mode="9"
+     points="6 -6,
+            0 -6,
+            0 -3,
+            3 0,
+            12 3,
+            6 6,
+            3 12,
+            -3 6,
+            -6 0,
+            -6 -6,
+            -12 -6,
+            -3 -12,
+            "/>
+    <Contour name="green$+" closed="true" border="0.000 1.000 0.000" fill="0.000 1.000 0.000" mode="9"
+     points="-12 4,
+            -12 -4,
+            -4 -4,
+            -4 -12,
+            4 -12,
+            4 -4,
+            12 -4,
+            12 4,
+            4 4,
+            4 12,
+            -4 12,
+            -4 4,
+            "/>
+    <Contour name="cyan$+" closed="true" border="0.000 1.000 1.000" fill="0.000 1.000 1.000" mode="9"
+     points="0 12,
+            4 8,
+            -12 -8,
+            -8 -12,
+            8 4,
+            12 0,
+            12 12,
+            "/>
+    <Contour name="a$+" closed="true" border="1.000 0.500 0.000" fill="1.000 0.500 0.000" mode="13"
+     points="-3 1,
+            -3 -1,
+            -1 -3,
+            1 -3,
+            3 -1,
+            3 1,
+            1 3,
+            -1 3,
+            "/>
+    <Contour name="b$+" closed="true" border="0.500 0.000 1.000" fill="0.500 0.000 1.000" mode="13"
+     points="-2 1,
+            -5 0,
+            -2 -1,
+            -4 -4,
+            -1 -2,
+            0 -5,
+            1 -2,
+            4 -4,
+            2 -1,
+            5 0,
+            2 1,
+            4 4,
+            1 2,
+            0 5,
+            -1 2,
+            -4 4,
+            "/>
+    <Contour name="pink$+" closed="true" border="1.000 0.000 0.500" fill="1.000 0.000 0.500" mode="-13"
+     points="-6 -6,
+            6 -6,
+            0 5,
+            "/>
+    <Contour name="X$+" closed="true" border="1.000 0.000 0.000" fill="1.000 0.000 0.000" mode="-13"
+     points="-7 7,
+            -2 0,
+            -7 -7,
+            -4 -7,
+            0 -1,
+            4 -7,
+            7 -7,
+            2 0,
+            7 7,
+            4 7,
+            0 1,
+            -4 7,
+            "/>
+    <Contour name="yellow$+" closed="true" border="1.000 1.000 0.000" fill="1.000 1.000 0.000" mode="-13"
+     points="8 8,
+            8 -8,
+            -8 -8,
+            -8 6,
+            -10 8,
+            -10 -10,
+            10 -10,
+            10 10,
+            -10 10,
+            -8 8,
+            "/>
+    <Contour name="blue$+" closed="true" border="0.000 0.000 1.000" fill="0.000 0.000 1.000" mode="9"
+     points="0 7,
+            -7 0,
+            0 -7,
+            7 0,
+            "/>
+    <Contour name="magenta$+" closed="true" border="1.000 0.000 1.000" fill="1.000 0.000 1.000" mode="9"
+     points="-6 2,
+            -6 -2,
+            -2 -6,
+            2 -6,
+            6 -2,
+            6 2,
+            2 6,
+            -2 6,
+            "/>
+    <Contour name="red$+" closed="true" border="1.000 0.000 0.000" fill="1.000 0.000 0.000" mode="9"
+     points="6 -6,
+            0 -6,
+            0 -3,
+            3 0,
+            12 3,
+            6 6,
+            3 12,
+            -3 6,
+            -6 0,
+            -6 -6,
+            -12 -6,
+            -3 -12,
+            "/>
+    <Contour name="green$+" closed="true" border="0.000 1.000 0.000" fill="0.000 1.000 0.000" mode="9"
+     points="-12 4,
+            -12 -4,
+            -4 -4,
+            -4 -12,
+            4 -12,
+            4 -4,
+            12 -4,
+            12 4,
+            4 4,
+            4 12,
+            -4 12,
+            -4 4,
+            "/>
+    <Contour name="cyan$+" closed="true" border="0.000 1.000 1.000" fill="0.000 1.000 1.000" mode="9"
+     points="0 12,
+            4 8,
+            -12 -8,
+            -8 -12,
+            8 4,
+            12 0,
+            12 12,
+            "/>
+    </Series>"""
+
+        newSeriesFile = open(seriesName + ".ser", "w")
+        newSeriesFile.write(blankSeriesFile)
+        newSeriesFile.close()
         print("Completed!")
 
-    # Create new local transformations files
+        print("\nSwitching focus to (0,0)...")
+        switchToCrop(seriesName, "0,0")
+        print("Completed!")
 
-    print("\nStoring new transformation data...")
+except Exception as e:
+    print(e)
 
-    for x in range(xchunks):
-        for y in range(ychunks):
-            newTransformationsFile = open(seriesName + "_" + str(x) + "," + str(y) +
-                                         "/LOCAL_TRANSFORMATIONS.txt", "w")
-            for i in range(len(imageFiles)):
-                
-                # shift the domain origins to bottom left corner of planned crop
-                xshift_pix = newDomainOrigins[x][y][0]
-                yshift_pix = newDomainOrigins[x][y][1]
-                newTransformationsFile.write("Section " + str(i) + "\n" +
-                                             "xshift: " + str(xshift_pix) + "\n" +
-                                             "yshift: " + str(yshift_pix) + "\n" +
-                                             "Dtrans: 1 0 0 0 1 0\n")
-            newTransformationsFile.close()
 
-    print("LOCAL_TRANSFORMATIONS.txt has been stored in each folder.")
-    print("Do NOT delete this file.")
-                  
-
-    # create blank section and series files
-
-    print("\nCreating new section and series files...")
-    
-    blankSectionFile = """<?xml version="1.0"?>
-<!DOCTYPE Section SYSTEM "section.dtd">
-<Section index="[SECTION_INDEX]" thickness="[SECTION_THICKNESS]" alignLocked="false">
-<Transform dim="[TRANSFORM_DIM]"
- xcoef="[XCOEF]"
- ycoef="[YCOEF]">
-<Image mag="[IMAGE_MAG]" contrast="1" brightness="0" red="true" green="true" blue="true"
- src="[IMAGE_SOURCE]" />
-<Contour name="domain1" hidden="false" closed="true" simplified="false" border="1 0 1" fill="1 0 1" mode="11"
- points="0 0,
-	[IMAGE_LENGTH] 0,
-	[IMAGE_LENGTH] [IMAGE_HEIGHT],
-	0 [IMAGE_HEIGHT],
-	"/>
-</Transform>
-</Section>"""
-
-    blankSectionFile = blankSectionFile.replace("[SECTION_THICKNESS]", str(sectionThickness))
-    blankSectionFile = blankSectionFile.replace("[TRANSFORM_DIM]", "3")
-
-    blankSectionFile = blankSectionFile.replace("[IMAGE_MAG]", str(micPerPix))
-    blankSectionFile = blankSectionFile.replace("[IMAGE_LENGTH]", str(int(img_length_max)))
-    blankSectionFile = blankSectionFile.replace("[IMAGE_HEIGHT]", str(int(img_height_max)))
-
-    
-    origTrans = open("ORIGINAL_TRANSFORMATIONS.txt", "r")
-    
-    for i in range(len(imageFiles)):
-        newSectionFile = open(seriesName + "." + str(i), "w")
-
-        # retrieve original transformations
-        origTrans.readline()
-        xcoef_data = origTrans.readline()
-        xcoef_str = xcoef_data[xcoef_data.find(":")+1 : xcoef_data.find("\n")]
-        ycoef_data = origTrans.readline()
-        ycoef_str = ycoef_data[ycoef_data.find(":")+1 : ycoef_data.find("\n")]
-
-        sectionFileText = blankSectionFile.replace("[SECTION_INDEX]", str(i))
-        sectionFileText = sectionFileText.replace("[IMAGE_SOURCE]", seriesName + "." + str(i) + ".tif")
-        sectionFileText = sectionFileText.replace("[XCOEF]", xcoef_str)
-        sectionFileText = sectionFileText.replace("[YCOEF]", ycoef_str)
-
-        newSectionFile.write(sectionFileText)
-        newSectionFile.close()
-
-    blankSeriesFile = """<?xml version="1.0"?>
-<!DOCTYPE Series SYSTEM "series.dtd">
-<Series index="0" viewport="0 0 0.00254"
-	units="microns"
-	autoSaveSeries="true"
-	autoSaveSection="true"
-	warnSaveSection="true"
-	beepDeleting="true"
-	beepPaging="true"
-	hideTraces="false"
-	unhideTraces="false"
-	hideDomains="false"
-	unhideDomains="false"
-	useAbsolutePaths="false"
-	defaultThickness="0.05"
-	zMidSection="false"
-	thumbWidth="128"
-	thumbHeight="96"
-	fitThumbSections="false"
-	firstThumbSection="1"
-	lastThumbSection="2147483647"
-	skipSections="1"
-	displayThumbContours="true"
-	useFlipbookStyle="false"
-	flipRate="5"
-	useProxies="true"
-	widthUseProxies="2048"
-	heightUseProxies="1536"
-	scaleProxies="0.25"
-	significantDigits="6"
-	defaultBorder="1.000 0.000 1.000"
-	defaultFill="1.000 0.000 1.000"
-	defaultMode="9"
-	defaultName="domain$+"
-	defaultComment=""
-	listSectionThickness="true"
-	listDomainSource="true"
-	listDomainPixelsize="true"
-	listDomainLength="false"
-	listDomainArea="false"
-	listDomainMidpoint="false"
-	listTraceComment="true"
-	listTraceLength="false"
-	listTraceArea="true"
-	listTraceCentroid="false"
-	listTraceExtent="false"
-	listTraceZ="false"
-	listTraceThickness="false"
-	listObjectRange="true"
-	listObjectCount="true"
-	listObjectSurfarea="false"
-	listObjectFlatarea="false"
-	listObjectVolume="false"
-	listZTraceNote="true"
-	listZTraceRange="true"
-	listZTraceLength="true"
-	borderColors="0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		"
-	fillColors="0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		0.000 0.000 0.000,
-		"
-	offset3D="0 0 0"
-	type3Dobject="0"
-	first3Dsection="1"
-	last3Dsection="2147483647"
-	max3Dconnection="-1"
-	upper3Dfaces="true"
-	lower3Dfaces="true"
-	faceNormals="false"
-	vertexNormals="true"
-	facets3D="8"
-	dim3D="-1 -1 -1"
-	gridType="0"
-	gridSize="1 1"
-	gridDistance="1 1"
-	gridNumber="1 1"
-	hueStopWhen="3"
-	hueStopValue="50"
-	satStopWhen="3"
-	satStopValue="50"
-	brightStopWhen="0"
-	brightStopValue="100"
-	tracesStopWhen="false"
-	areaStopPercent="999"
-	areaStopSize="0"
-	ContourMaskWidth="0"
-	smoothingLength="7"
-	mvmtIncrement="0.022 1 1 1.01 1.01 0.02 0.02 0.001 0.001"
-	ctrlIncrement="0.0044 0.01 0.01 1.002 1.002 0.004 0.004 0.0002 0.0002"
-	shiftIncrement="0.11 100 100 1.05 1.05 0.1 0.1 0.005 0.005"
-	>
-<Contour name="a$+" closed="true" border="1.000 0.500 0.000" fill="1.000 0.500 0.000" mode="13"
- points="-3 1,
-	-3 -1,
-	-1 -3,
-	1 -3,
-	3 -1,
-	3 1,
-	1 3,
-	-1 3,
-	"/>
-<Contour name="b$+" closed="true" border="0.500 0.000 1.000" fill="0.500 0.000 1.000" mode="13"
- points="-2 1,
-	-5 0,
-	-2 -1,
-	-4 -4,
-	-1 -2,
-	0 -5,
-	1 -2,
-	4 -4,
-	2 -1,
-	5 0,
-	2 1,
-	4 4,
-	1 2,
-	0 5,
-	-1 2,
-	-4 4,
-	"/>
-<Contour name="pink$+" closed="true" border="1.000 0.000 0.500" fill="1.000 0.000 0.500" mode="-13"
- points="-6 -6,
-	6 -6,
-	0 5,
-	"/>
-<Contour name="X$+" closed="true" border="1.000 0.000 0.000" fill="1.000 0.000 0.000" mode="-13"
- points="-7 7,
-	-2 0,
-	-7 -7,
-	-4 -7,
-	0 -1,
-	4 -7,
-	7 -7,
-	2 0,
-	7 7,
-	4 7,
-	0 1,
-	-4 7,
-	"/>
-<Contour name="yellow$+" closed="true" border="1.000 1.000 0.000" fill="1.000 1.000 0.000" mode="-13"
- points="8 8,
-	8 -8,
-	-8 -8,
-	-8 6,
-	-10 8,
-	-10 -10,
-	10 -10,
-	10 10,
-	-10 10,
-	-8 8,
-	"/>
-<Contour name="blue$+" closed="true" border="0.000 0.000 1.000" fill="0.000 0.000 1.000" mode="9"
- points="0 7,
-	-7 0,
-	0 -7,
-	7 0,
-	"/>
-<Contour name="magenta$+" closed="true" border="1.000 0.000 1.000" fill="1.000 0.000 1.000" mode="9"
- points="-6 2,
-	-6 -2,
-	-2 -6,
-	2 -6,
-	6 -2,
-	6 2,
-	2 6,
-	-2 6,
-	"/>
-<Contour name="red$+" closed="true" border="1.000 0.000 0.000" fill="1.000 0.000 0.000" mode="9"
- points="6 -6,
-	0 -6,
-	0 -3,
-	3 0,
-	12 3,
-	6 6,
-	3 12,
-	-3 6,
-	-6 0,
-	-6 -6,
-	-12 -6,
-	-3 -12,
-	"/>
-<Contour name="green$+" closed="true" border="0.000 1.000 0.000" fill="0.000 1.000 0.000" mode="9"
- points="-12 4,
-	-12 -4,
-	-4 -4,
-	-4 -12,
-	4 -12,
-	4 -4,
-	12 -4,
-	12 4,
-	4 4,
-	4 12,
-	-4 12,
-	-4 4,
-	"/>
-<Contour name="cyan$+" closed="true" border="0.000 1.000 1.000" fill="0.000 1.000 1.000" mode="9"
- points="0 12,
-	4 8,
-	-12 -8,
-	-8 -12,
-	8 4,
-	12 0,
-	12 12,
-	"/>
-<Contour name="a$+" closed="true" border="1.000 0.500 0.000" fill="1.000 0.500 0.000" mode="13"
- points="-3 1,
-	-3 -1,
-	-1 -3,
-	1 -3,
-	3 -1,
-	3 1,
-	1 3,
-	-1 3,
-	"/>
-<Contour name="b$+" closed="true" border="0.500 0.000 1.000" fill="0.500 0.000 1.000" mode="13"
- points="-2 1,
-	-5 0,
-	-2 -1,
-	-4 -4,
-	-1 -2,
-	0 -5,
-	1 -2,
-	4 -4,
-	2 -1,
-	5 0,
-	2 1,
-	4 4,
-	1 2,
-	0 5,
-	-1 2,
-	-4 4,
-	"/>
-<Contour name="pink$+" closed="true" border="1.000 0.000 0.500" fill="1.000 0.000 0.500" mode="-13"
- points="-6 -6,
-	6 -6,
-	0 5,
-	"/>
-<Contour name="X$+" closed="true" border="1.000 0.000 0.000" fill="1.000 0.000 0.000" mode="-13"
- points="-7 7,
-	-2 0,
-	-7 -7,
-	-4 -7,
-	0 -1,
-	4 -7,
-	7 -7,
-	2 0,
-	7 7,
-	4 7,
-	0 1,
-	-4 7,
-	"/>
-<Contour name="yellow$+" closed="true" border="1.000 1.000 0.000" fill="1.000 1.000 0.000" mode="-13"
- points="8 8,
-	8 -8,
-	-8 -8,
-	-8 6,
-	-10 8,
-	-10 -10,
-	10 -10,
-	10 10,
-	-10 10,
-	-8 8,
-	"/>
-<Contour name="blue$+" closed="true" border="0.000 0.000 1.000" fill="0.000 0.000 1.000" mode="9"
- points="0 7,
-	-7 0,
-	0 -7,
-	7 0,
-	"/>
-<Contour name="magenta$+" closed="true" border="1.000 0.000 1.000" fill="1.000 0.000 1.000" mode="9"
- points="-6 2,
-	-6 -2,
-	-2 -6,
-	2 -6,
-	6 -2,
-	6 2,
-	2 6,
-	-2 6,
-	"/>
-<Contour name="red$+" closed="true" border="1.000 0.000 0.000" fill="1.000 0.000 0.000" mode="9"
- points="6 -6,
-	0 -6,
-	0 -3,
-	3 0,
-	12 3,
-	6 6,
-	3 12,
-	-3 6,
-	-6 0,
-	-6 -6,
-	-12 -6,
-	-3 -12,
-	"/>
-<Contour name="green$+" closed="true" border="0.000 1.000 0.000" fill="0.000 1.000 0.000" mode="9"
- points="-12 4,
-	-12 -4,
-	-4 -4,
-	-4 -12,
-	4 -12,
-	4 -4,
-	12 -4,
-	12 4,
-	4 4,
-	4 12,
-	-4 12,
-	-4 4,
-	"/>
-<Contour name="cyan$+" closed="true" border="0.000 1.000 1.000" fill="0.000 1.000 1.000" mode="9"
- points="0 12,
-	4 8,
-	-12 -8,
-	-8 -12,
-	8 4,
-	12 0,
-	12 12,
-	"/>
-</Series>"""
-
-    newSeriesFile = open(seriesName + ".ser", "w")
-    newSeriesFile.write(blankSeriesFile)
-    newSeriesFile.close()
-    print("Completed!")
-
-    print("\nSwitching focus to (0,0)...")
-    switchToCrop(seriesName, "0,0")
-    print("Completed!")
-    
 input("\nPress enter to exit.")

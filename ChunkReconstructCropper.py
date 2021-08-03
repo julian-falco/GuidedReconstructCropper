@@ -1000,7 +1000,7 @@ try:
                                               ("All Files","*.*")))
 
             # section 0 is often the grid and does not get aligned
-            trans_offset = intInput("What section does the transformation start on?\n" +
+            trans_offset = intInput("\nWhat section does the transformation start on?\n" +
                                     "(this program starts on section 0): ")
 
         # store domain transformation for each of the sections and store them in a text file

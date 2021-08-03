@@ -1,71 +1,4 @@
-print("Getting modules...")
-
-import sys
-import os
-
-for p in sys.path:
-    if "site-packages" in p:
-        module_dir = p
-
-if not module_dir:
-    raise Exception("There is no site-packages folder located on the path.")
-
-else:
-
-    needs_import = False
-
-    try:
-        import numpy as np
-        numpy_bat = ""
-    except ModuleNotFoundError:
-        needs_import = True
-        print("\nThe numpy module is not found in the current path.")
-        numpy_bat = "pip install numpy --target " + module_dir + "\n"
-
-    try:
-        from tkinter import *
-        from tkinter.filedialog import askopenfilename, askopenfilenames, askdirectory
-        tkinter_bat = ""
-    except ModuleNotFoundError:
-        needs_import = True
-        print("\nThe tkinter module is not found in the current path.")
-        tkinter_bat = "pip install tk --target " + module_dir + "\n"
-
-    try:
-        from PIL import Image as PILImage
-        PILImage.MAX_IMAGE_PIXELS = None
-        Pillow_bat = ""
-    except ModuleNotFoundError:
-        needs_import = True
-        print("\nThe Pillow module is not found in the current path.")
-        Pillow_bat = "pip install Pillow --target " + module_dir + "\n"
-
-if not needs_import:
-    print("\nAll required modules have been successfully located.")
-else:
-    bat = open("InstallModules.bat", "w")
-    bat.write(numpy_bat)
-    bat.write(tkinter_bat)
-    bat.write(Pillow_bat)
-    bat.close()
-
-    print("\nOpening Command Prompt to install required modules...")
-    
-    import subprocess
-    subprocess.call(["InstallModules.bat"])
-    os.remove("InstallModules.bat")
-
-    print("\nThe necessary modules have been automatically installed.")
-
-    if numpy_bat:
-        import numpy as np
-    if tkinter_bat:
-        from tkinter import *
-        from tkinter.filedialog import askopenfilename, askopenfilenames, askdirectory
-    if Pillow_bat:
-        from PIL import Image as PILImage
-        PILImage.MAX_IMAGE_PIXELS = None
-
+# FUNCTIONS BLOCK
     
 def findBounds(fileName, obj):
     """Finds the bounds of a specified object on a single trace file."""
@@ -83,11 +16,6 @@ def findBounds(fileName, obj):
     while not '"domain1"' in line:
         domainIndex += 1
         line = lines[domainIndex]
-    
-    # raise exception if transformation dimension is higher than 3
-    ##dim = int(lines[domainIndex-5].split('"')[1])
-    ##if dim > 3:
-    ##    raise Exception("This program cannot work with transformation dimensions higher than three.")
 
     # grab xcoef transformation
     xcoef = [float(x) for x in lines[domainIndex-4].replace('"',"").split()[1:4]]
@@ -98,7 +26,7 @@ def findBounds(fileName, obj):
     # convert to transformation matrix
     domain_trans = coefToMatrix(xcoef, ycoef)
     
-    # create variables
+    # create variables: min for points with and without inverse domain transformation
     xmin = 0
     xmin_idomain = 0
     xmax = 0
@@ -136,13 +64,12 @@ def findBounds(fileName, obj):
                 # set up points and transformation matrix
                 coords_mat = np.array([[float(coords[0])],
                                        [float(coords[1])],
-                                       [1]])
-                trans_mat = np.linalg.inv(np.array([[xcoef[1],xcoef[2],xcoef[0]],
-                                      [ycoef[1],ycoef[2],ycoef[0]],
-                                      [0,0,1]]))
-                inv_domain_trans = np.linalg.inv(domain_trans)
-                trans_coords = np.matmul(trans_mat, coords_mat)
-                trans_coords_idomain = np.matmul(inv_domain_trans, trans_coords)
+                                       [1]]) # matrix for the point
+                trans_mat = coefToMatrix(xcoef, ycoef) # transformation 
+                inv_domain_trans = np.linalg.inv(domain_trans) # inverse domain transformation
+
+                trans_coords = np.matmul(trans_mat, coords_mat) # point fixed in reconstruct space (to return)
+                trans_coords_idomain = np.matmul(inv_domain_trans, trans_coords) # point fixed to the image (to check)
 
                 # if no points recorded yet, set min and maxes
                 if xmin == 0 and xmax == 0 and ymin == 0 and ymax == 0:
@@ -150,13 +77,13 @@ def findBounds(fileName, obj):
                     xmax = trans_coords[0][0]
                     ymin = trans_coords[1][0]
                     ymax = trans_coords[1][0]
-                    
                     xmin_idomain = trans_coords_idomain[0][0]
                     xmax_idomain = trans_coords_idomain[0][0]
                     ymin_idomain = trans_coords_idomain[1][0]
                     ymax_idomain = trans_coords_idomain[1][0]
 
                 # otherwise, check for min and max values for both x and y
+                # points fixed to the image are checked
                 else:
                     if trans_coords_idomain[0][0] < xmin_idomain:
                         xmin = trans_coords[0][0]
@@ -187,11 +114,6 @@ def findBounds(fileName, obj):
                 xcoefIndex = lineIndex
                 while not ("xcoef" in lines[xcoefIndex]):
                     xcoefIndex -= 1
-
-                # raise exception if transformation dimension is higher than 3
-                ##dim = int(lines[xcoefIndex-1].split('"')[1])
-                ##if dim > 3:
-                ##    raise Exception("This program cannot work with transformation dimensions higher than three.")
                 
                 # set the xcoef and ycoef
                 xcoef = [float(x) for x in lines[xcoefIndex].split()[1:4]]
@@ -201,7 +123,7 @@ def findBounds(fileName, obj):
     if xmin == 0 and xmax == 0 and ymin == 0 and ymax == 0:
         return None
     
-    # return bounds
+    # return bounds (fixed to Reconstruct space)
     return xmin, xmax, ymin, ymax
 
 
@@ -228,7 +150,7 @@ def fillInBounds(bounds_dict):
 
 
 def getSectionInfo(fileName):
-    """Gets the domain origin data from a single trace file."""
+    """Gets the transformation, magnification, and image source from a single trace file."""
     
     # open trace file, read lines, and close
     traceFile = open(fileName, "r")
@@ -243,11 +165,6 @@ def getSectionInfo(fileName):
     while not '"domain1"' in line:
         domainIndex += 1
         line = lines[domainIndex]
-    
-    # raise exception if transformation dimension is higher than 3
-    ##dim = int(lines[domainIndex-5].split('"')[1])
-    ##if dim > 3:
-    ##    raise Exception("This program cannot work with transformation dimensions higher than three.")
 
     # grab xcoef transformation
     xcoef = [float(x) for x in lines[domainIndex-4].replace('"',"").split()[1:4]]
@@ -263,7 +180,7 @@ def getSectionInfo(fileName):
 
     
 def getSeriesInfo(fileName):
-    """Return the series name and section number"""
+    """Return the series name and number of sections."""
 
     # get only the name
     seriesName = fileName.replace(".ser", "")
@@ -277,42 +194,44 @@ def getSeriesInfo(fileName):
             sectionNums.append(int(file[file.rfind(".")+1:]))
         except:
             pass
-        
+
+    # sort the section numbers so they are in order
     sectionNums.sort()
 
     return seriesName, sectionNums
 
 
 def switchToOriginal(seriesName, objName):
-    """Switch focus to a cropped series from the original"""
+    """Switch focus to a cropped series from the original."""
 
-    # check for new transformations
-    iDtransList = checkForRealignment(seriesName, objName)
+    # check for transformations that deviate from the original alignment
+    iDtrans_dict = checkForRealignment(seriesName, objName)
 
-    # open the transformation files
+    # open and read the transformation file
     localTrans = open(seriesName + "_" + objName + "/LOCAL_TRANSFORMATIONS.txt", "r")
     lines = localTrans.readlines()
     localTrans.close()
 
+    # create new transformation file
     newLocalTrans = open(seriesName + "_" + objName + "/LOCAL_TRANSFORMATIONS.txt", "w")
 
     # store the new transformations and grab shifts for each section
     for line in lines:
         if "Section" in line:
-            sectionNum = int(line.split()[1])
+            sectionNum = int(line.split()[1]) # get section number
         elif "xshift" in line:
-            xshift_pix = int(line.split()[1])
+            xshift_pix = int(line.split()[1]) # get shifted origin
         elif "yshift" in line:
-            yshift_pix = int(line.split()[1])
-            
+            yshift_pix = int(line.split()[1]) # get shifted origin
+
+        # transformation all the traces so that they match the original and save transformation data for cropped version    
         elif "Dtrans" in line:
-            # edit all of the traces in the section
             transformAllTraces(seriesName + "." + str(sectionNum),
-                               iDtransList[sectionNum],
-                               -xshift_pix, -yshift_pix, "")
+                               iDtrans_dict[sectionNum], # transform all the traces by this matrix
+                               -xshift_pix, -yshift_pix, "") # additionally, move domain and change image source
             
             # store the transformation matrix going from original to cropped
-            Dtrans = np.linalg.inv(iDtransList[sectionNum])
+            Dtrans = np.linalg.inv(iDtrans_dict[sectionNum])
             line = "Dtrans: "
             line += str(Dtrans[0,0]) + " "
             line += str(Dtrans[0,1]) + " "
@@ -323,11 +242,14 @@ def switchToOriginal(seriesName, objName):
                 
         newLocalTrans.write(line)
 
+    # transform all of the z-traces
+    transformZtraces(seriesName + ".ser", iDtrans_dict)
+
     newLocalTrans.close()
             
 
 def switchToCrop(seriesName, objName):
-    """Switch focus to an original series from a cropped one"""
+    """Switch focus to an original series from a cropped one."""
     
     # open transformation files
     localTrans = open(seriesName + "_" + objName + "/LOCAL_TRANSFORMATIONS.txt", "r")
@@ -343,60 +265,91 @@ def switchToCrop(seriesName, objName):
     # save current alignment on original
     saveOriginalTransformations(seriesName, sectionNums)
 
+    # store transformations (for z-traces)
+    Dtrans_dict = {}
+
     # grab transformation data from each of the files
     for line in lines:
         if "Section" in line:
-            sectionNum = int(line.split()[1])
+            sectionNum = int(line.split()[1]) # get the section number
         elif "xshift" in line:
-            xshift_pix = int(line.split()[1])
+            xshift_pix = int(line.split()[1]) # get shifted origin
         elif "yshift" in line:
-            yshift_pix = int(line.split()[1])
+            yshift_pix = int(line.split()[1]) # get shifted origin
+
+        # transform all traces to saved aligment, shift origin, and change image source
         elif "Dtrans" in line:
+            
+            # create the new alignment matrix
             Dtrans = [float(z) for z in line.split()[1:7]]
             DtransMatrix = [[Dtrans[0],Dtrans[1],Dtrans[2]],
                                  [Dtrans[3],Dtrans[4],Dtrans[5]],
                                  [0,0,1]]
 
             # transform all the traces by the Dtrans matrix
-            transformAllTraces(seriesName + "." + str(sectionNum), DtransMatrix, xshift_pix, yshift_pix, objName)
+            transformAllTraces(seriesName + "." + str(sectionNum),
+                               DtransMatrix, # shift all traces by this matrix
+                               xshift_pix, yshift_pix, objName) # shift the origins change image source
+
+            # add transformation to dictionary
+            Dtrans_dict[sectionNum] = DtransMatrix
+
+    # transform all of the z-traces
+    transformZtraces(seriesName + ".ser", Dtrans_dict)
         
     
 def checkForRealignment(seriesName, objName):
-    """Check for differences in base alignment between cropped and original series"""
+    """Check for differences in domain alignment between cropped and original series."""
 
     # open the two transformation files
     origTransFile = open("ORIGINAL_TRANSFORMATIONS.txt", "r")
     localTransFile = open(seriesName + "_" + objName + "/LOCAL_TRANSFORMATIONS.txt", "r")
 
-    # read through each of the files and gather data
+    # store trasnformations
     iDtransList = {}
+
+    # read through local and original transformations simultaneously
     for localLine in localTransFile.readlines():
         if "Section" in localLine:
-            origTransFile.readline()
-            sectionNum = int(localLine.split()[1])
+            origTransFile.readline() # skip line in original file
+            sectionNum = int(localLine.split()[1]) # get the section number
+            
+            # get new domain transformation info for this section
             sectionInfo = getSectionInfo(seriesName + "." + str(sectionNum))
             local_xcoef = sectionInfo[0]
             local_ycoef = sectionInfo[1]
+        
         elif "xshift" in localLine:
-            origLine = origTransFile.readline()
+            xshift = int(localLine.split()[1]) * sectionInfo[2] # get origin shift
+
+            # get original domain transformation info for this section
+            origLine = origTransFile.readline() 
             orig_xcoef = [float(x) for x in origLine.split()[1:4]]
-            xshift = int(localLine.split()[1]) * sectionInfo[2]
+            
         elif "yshift" in localLine:
+            yshift = int(localLine.split()[1]) * sectionInfo[2] # get origin shift
+
+            # get original domain transformation info for this section
             origLine = origTransFile.readline()
             orig_ycoef = [float(y) for y in origLine.split()[1:4]]
-            yshift = int(localLine.split()[1]) * sectionInfo[2]
 
         # check for realignment using the two matrices
         elif "Dtrans" in localLine:
+            
             # set up the two matrices
-            local_matrix = coefToMatrix(local_xcoef, local_ycoef)
-            orig_matrix = coefToMatrix(orig_xcoef, orig_ycoef)
+            local_matrix = coefToMatrix(local_xcoef, local_ycoef) # new transformation
+            orig_matrix = coefToMatrix(orig_xcoef, orig_ycoef) # original transformation
+
+            # transform the shifted origin by ONLY the shear/stretch components of the new transformation
             transformedShiftCoords = np.matmul(local_matrix[:2,:2], [[xshift],[yshift]])
+
+            # cancel out xshift and yshift from new transformation to match original
             local_matrix[0][2] -= transformedShiftCoords[0][0]
             local_matrix[1][2] -= transformedShiftCoords[1][0]
+            
             # get the "difference" between the two matrices and store the result
-            z_matrix = np.matmul(orig_matrix, np.linalg.inv(local_matrix))
-            iDtransList[sectionNum] = z_matrix
+            iD_matrix = np.matmul(orig_matrix, np.linalg.inv(local_matrix))
+            iDtransList[sectionNum] = iD_matrix
         
     origTransFile.close()
     localTransFile.close()
@@ -405,7 +358,7 @@ def checkForRealignment(seriesName, objName):
 
 
 def transformAllTraces(fileName, transformation, xshift_pix, yshift_pix, objName):
-    """Multiply all of the traces on a section by a transformation matrix while also changing the image domain and source"""
+    """Multiply all of the traces on a section by a transformation matrix; also chang the image domain and source."""
 
     # get section info
     sectionInfo = getSectionInfo(fileName)
@@ -417,15 +370,19 @@ def transformAllTraces(fileName, transformation, xshift_pix, yshift_pix, objName
     needsTransformation = not (np.round(transformation, decimals = 8) == noTrans).all()
 
     # make the domain transformation matrix
-    existingDomainTrans = coefToMatrix(sectionInfo[0],sectionInfo[1])
+    existingDomainTrans = coefToMatrix(sectionInfo[0],sectionInfo[1]) # get existing domain transformation
+
+    # transform the shifted origin by ONLY shear/stretch component of transformation
     transformedShiftCoords = np.matmul(existingDomainTrans[:2,:2],
                                        [[xshift_pix*sectionInfo[2]],[yshift_pix*sectionInfo[2]]])
     transformedShiftCoords = np.matmul(transformation[:2,:2], transformedShiftCoords)
+
+    # add the transformed shifts to the matrix that will transform the domain
     domainTransformation = transformation.copy()
     domainTransformation[0][2] += transformedShiftCoords[0][0]
     domainTransformation[1][2] += transformedShiftCoords[1][0]
     
-    # open the section file    
+    # open and read the section file    
     sectionFile = open(fileName, "r")
     lines = sectionFile.readlines()
     sectionFile.close()
@@ -437,6 +394,7 @@ def transformAllTraces(fileName, transformation, xshift_pix, yshift_pix, objName
         domainIndex += 1
         line = lines[domainIndex]
 
+    # create the new section file
     newSectionFile = open(fileName, "w")
 
     # read through the file
@@ -446,14 +404,16 @@ def transformAllTraces(fileName, transformation, xshift_pix, yshift_pix, objName
         # make sure the dimension is set to three
         if '<Transform dim="0"' in line:
             line = line.replace("0", "3")
-        
+
+        # if iterator is on the domain xcoef line
         elif i == domainIndex - 4:
+            
             # gather the matrices and multiply them by the transformation matrix
             xcoef = [float(x) for x in line.split()[1:4]]
             ycoef = [float(y) for y in lines[i+1].split()[1:4]]
             newMatrix = np.linalg.inv(np.matmul(domainTransformation, coefToMatrix(xcoef, ycoef)))
 
-            # write the new matrices to the file
+            # set up strings for both xcoef and ycoef to write to file
             
             xcoef_line = ' xcoef=" '
             xcoef_line += str(newMatrix[0,2]) + " "
@@ -468,27 +428,32 @@ def transformAllTraces(fileName, transformation, xshift_pix, yshift_pix, objName
             ycoef_line += '0 0 0">\n'
 
             line = xcoef_line
-        
+
+        # if iterator is on domain ycoef line
         elif i == domainIndex - 3:
+
+            # write line that was set in previous elif statement
             line = ycoef_line
 
-        # create a new image directory
+        # cif iterator is on the image source line
         elif i == domainIndex - 1:
-            imageFile = line.split('"')[1]
-            if "/" in imageFile:
+            imageFile = line.split('"')[1] # get the current image source
+            if "/" in imageFile and objName == "": # if image source is focused on a crop and switching to original
                 imageFile = imageFile[imageFile.find("/")+1:]
-            if not objName == "":
+            else: # if image source is set to original and switching to a crop
                 imageFile = seriesName + "_" + objName + "/" + imageFile
                 
             line = ' src="' + imageFile + '" />\n'
-        
+
+        # if non-identity transformation and iterator is on xcoef that isn't domain
         elif needsTransformation and "xcoef" in line:
+            
             # gather the matrices and multiply them by the transformation matrix
             xcoef = [float(x) for x in line.split()[1:4]]
             ycoef = [float(y) for y in lines[i+1].split()[1:4]]
             newMatrix = np.linalg.inv(np.matmul(transformation, coefToMatrix(xcoef, ycoef)))
 
-            # write the new matrices to the file
+            # set up strings for both xcoef and ycoef to write to file
             
             xcoef_line = ' xcoef=" '
             xcoef_line += str(newMatrix[0,2]) + " "
@@ -503,17 +468,61 @@ def transformAllTraces(fileName, transformation, xshift_pix, yshift_pix, objName
             ycoef_line += '0 0 0">\n'
 
             line = xcoef_line
-        
+
+        # if non-identity transformation and iterator is on ycoef that isn't domain
         elif needsTransformation and "ycoef" in line:
+
+            # write line that was set up in previous elif statement
             line = ycoef_line
 
         newSectionFile.write(line)
 
     newSectionFile.close()
 
+def transformZtraces(fileName, transformation_dict):
+    """Transform all of the ztraces in a series file."""
+
+    # read all of the lines in the series file
+    seriesFile = open(fileName, "r")
+    lines = seriesFile.readlines()
+    seriesFile.close()
+
+    # create new series file
+    newSeriesFile = open(fileName, "w")
+
+    # iterate through series file
+    recording = False
+    for line in lines:
+
+        # if at end of points while recording, stop recording
+        if recording and line.strip() == '"/>':
+            recording = False
+
+        # transform points if recording
+        if recording:
+
+            # split line to get info
+            split_line = line.replace('points="',"").split()
+            x_coord = float(split_line[0])
+            y_coord = float(split_line[1])
+            sectionNum = int(split_line[2].replace(",",""))
+
+            # transform coordinates
+            coords = [[x_coord],[y_coord],[1]]
+            trans_coords = np.matmul(transformation_dict[sectionNum], coords)
+
+            # replace old with new coordinates
+            line = line.replace(split_line[0], str(round(trans_coords[0][0],4)))
+            line = line.replace(split_line[1], str(round(trans_coords[1][0],4)))       
+
+        # if iterator reaches beginning of Ztrace
+        if line.startswith("<ZContour name="):
+            recording = True
+
+        newSeriesFile.write(line)
 
 def coefToMatrix(xcoef, ycoef):
-    """Turn a set of x and y coef into a transformation matrix"""
+    """Turn a set of x and y coef into a transformation matrix."""
     
     return np.linalg.inv(np.array([[xcoef[1], xcoef[2], xcoef[0]],
                        [ycoef[1], ycoef[2], ycoef[0]],
@@ -521,7 +530,7 @@ def coefToMatrix(xcoef, ycoef):
 
 
 def getCropFocus(sectionFileName, seriesName):
-    """Find the current crop focus"""
+    """Find the current crop focus based on the image source of the first section."""
 
     # open the section file
     sectionFile = open(sectionFileName, "r")
@@ -545,15 +554,25 @@ def getCropFocus(sectionFileName, seriesName):
 
 
 def saveOriginalTransformations(seriesName, sectionNums):
+    """Save the current set of trasnformations to the ORIGINAL_TRANSFORMATIONS.txt file"""
+
+    # open the original transformations file
     transformationsFile = open("ORIGINAL_TRANSFORMATIONS.txt", "w")
+
     for sectionNum in sectionNums:
+
+        # get existing transformations
         sectionInfo = getSectionInfo(seriesName + "." + str(sectionNum))
+
+        # turn existing transformation into strings
         xcoef_str = ""
         for x in sectionInfo[0]:
             xcoef_str += str(x) + " "
         ycoef_str = ""
         for y in sectionInfo[1]:
             ycoef_str += str(y) + " "
+
+        # write the new xcoef and ycoef to the file
         transformationsFile.write("Section " + str(sectionNum) + "\n"
                                   "xcoef: " + xcoef_str + "\n" +
                                   "ycoef: " + ycoef_str + "\n")
@@ -561,6 +580,8 @@ def saveOriginalTransformations(seriesName, sectionNums):
 
 
 def intInput(inputStr):
+    """Force user to give an integer input."""
+    
     isInt = False
     while not isInt:
         try:
@@ -571,6 +592,8 @@ def intInput(inputStr):
     return num
 
 def floatInput(inputStr):
+    """Force user to give a float input."""
+    
     isFloat = False
     while not isFloat:
         try:
@@ -581,6 +604,8 @@ def floatInput(inputStr):
     return num
 
 def ynInput(inputStr):
+    """Force user to give y/n input."""
+    
     response = input(inputStr)
     while response != "y" and response != "n":
         print("Please enter y or n.")
@@ -590,8 +615,122 @@ def ynInput(inputStr):
     return False
 
 
+# MAIN P1: Ensuring that modules are installed in the correct place
 
-# BEGINNING OF MAIN: gather inputs
+try:
+    print("Getting modules...")
+
+    # default modules
+    import sys
+    import os
+
+    # boolean to keep track if module needs to be imported
+    needs_import = False
+
+    # try to import numpy
+    try:
+        import numpy as np
+        numpy_bat = ""
+    except ModuleNotFoundError:
+        # if not found, inform user and set up batch text
+        needs_import = True
+        print("\nThe numpy module is not found in the current path.")
+        numpy_bat = "pip install numpy --target " + module_dir + "\n"
+
+    # try to import tkinter (should already be a part of python)
+    try:
+        from tkinter import *
+        from tkinter.filedialog import askopenfilename, askopenfilenames, askdirectory
+        tkinter_bat = ""
+    except ModuleNotFoundError:
+        # if not found, inform user and set up batch text
+        needs_import = True
+        print("\nThe tkinter module is not found in the current path.")
+        tkinter_bat = "pip install tk --target " + module_dir + "\n"
+
+    # try to import Pillow
+    try:
+        from PIL import Image as PILImage
+        PILImage.MAX_IMAGE_PIXELS = None # turn off image size restriction
+        Pillow_bat = ""
+    except ModuleNotFoundError:
+        # if not found, inform user and set up batch text
+        needs_import = True
+        print("\nThe Pillow module is not found in the current path.")
+        Pillow_bat = "pip install Pillow --target " + module_dir + "\n"
+
+    # do nothing if all modules found
+    if not needs_import:
+        print("\nAll required modules have been successfully located.")
+
+    # install modules that were not found
+    else:
+
+        #ask user if they want to direct the program to the modules
+        directing = ynInput("Would you like to find the site-packages folder containing the required modules? (y/n): ")
+        
+        if directing:
+            site_packages_dir = input("Please paste the path for the site-packages directory containing the required modules.")
+            sys.path.append(site_packages_dir)
+
+            # try to import all of the required modules again
+            try:
+                import numpy as np
+                from tkinter import *
+                from tkinter.filedialog import askopenfilename, askopenfilenames, askdirectory
+                from PIL import Image as PILImage
+                PILImage.MAX_IMAGE_PIXELS = None # turn off image size restriction
+                print("Modules have been found.")
+
+            # if given folder still doesn't contain module, download them
+            except ModuleNotFoundError:
+                print("Modules were not found in provided folder.")
+                directing = False
+            
+        # download modules if user does not locate them
+        if not directing:
+            input("\nPress enter to download the modules.")
+            # find the site-packages folder to put the modules into
+            for p in sys.path:
+                if p.endswith("site-packages"):
+                    module_dir = p
+                    
+            # raise an error if there is no site-packages folder
+            if not module_dir:
+                raise Exception("There is no site-packages folder located on the path.")
+
+            # create the batch file
+            bat = open("InstallModules.bat", "w")
+            bat.write(numpy_bat)
+            bat.write(tkinter_bat)
+            bat.write(Pillow_bat)
+            bat.close()
+
+            # run the batch file with subprocess module
+            print("\nOpening Command Prompt to install required modules...")    
+            import subprocess
+            subprocess.call(["InstallModules.bat"])
+
+            # delete the batch
+            os.remove("InstallModules.bat")
+
+            # import the modules that were just installed
+            if numpy_bat:
+                import numpy as np
+            if tkinter_bat:
+                from tkinter import *
+                from tkinter.filedialog import askopenfilename, askopenfilenames, askdirectory
+            if Pillow_bat:
+                from PIL import Image as PILImage
+                PILImage.MAX_IMAGE_PIXELS = None
+
+            print("\nThe necessary modules have been installed.")
+
+except Exception as e:
+    print(e)
+
+
+# MAIN P2: Cropping and user interface for switching crops
     
 try:
 
@@ -601,48 +740,57 @@ try:
     elif __file__:
         application_path = os.path.dirname(__file__)
 
-    config_path = os.path.join(application_path)
-    
+    # change working directory to file location and output working directory
+    os.chdir(application_path)
     print("\nCurrent working directory: " + os.getcwd())
 
     change = ynInput("Would you like to change the working directory? (y/n): ")
 
+    # prompt user to select new directory if desired
     if change:
-        input("Press enter to select the new working directory.")
-        
+        input("\nPress enter to select the new working directory.")
+
+        # create tkinter object but don't display extra window
         root = Tk()
         root.attributes("-topmost", True)
         root.withdraw()
-        
+
+        # open file explorer to select new working directory
         os.chdir(askdirectory(title="Select Folder"))
 
-    # locate the series file and gather pertinent info
+    # locate the series file and get series name if found
     print("\nLocating series file...")
     fileName = ""
     for file in os.listdir("."):
         if file.endswith(".ser"):
             fileName = str(file)
 
-    # switch crops if there is an existing series file
+    # prompt user to switch crops if there is an existing series file
     if fileName:
+
+        # gather series info data
         seriesName, sectionNums = getSeriesInfo(fileName)
 
-        # find the current crop focus
+        # find and output the current crop focus
         cropFocus = getCropFocus(seriesName + "." + str(sectionNums[0]), seriesName)
         if cropFocus:
             print("This series is currently focused on: " + cropFocus)
         else:
             print("This series is currently set to the original set of images.")
 
-        # gather inputs
+        # prompt user for new focus
         print("\nPlease enter the coordinates or object you would like to focus on.")
-        newFocus = input("(x,y with no spaces or parentheses): ")
+        newFocus = input("(x,y with no spaces or parentheses for coordinates): ")
 
         # if switching to original
         if newFocus == "":
+            
+            # if already on original
             if cropFocus == "":
                 print("\nThe original series is already set as the focus.")
-            else:
+
+            # switch to original if not
+            else: 
                 print("\nWould you like to switch to the original series?")
                 input("Press enter to continue or Ctrl+c to exit.")
                 print("\nSwitching to original series...")
@@ -651,16 +799,33 @@ try:
 
         # if switching to crop
         else:
+
+            # if already on desired crop
             if cropFocus == newFocus:
                 print("\n" + newFocus + " is already set as the focus.")
 
-            # if crop does not exist
-            elif not os.path.isdir(seriesName + "_" + newFocus):
+            # if switching to an existing crop
+            elif os.path.isdir(seriesName + "_" + newFocus):
+
+                # switch to the original crop if not already on
+                if cropFocus != "":
+                    print("\nSwitching to original crop focus to prepare...")
+                    switchToOriginal(seriesName, cropFocus)
+                    print("Successfully set the original series as the focus.")
+                
+                input("\nPress enter to continue and switch cropping focus to " + newFocus)
+                print("\nSwitching to " + newFocus + "...")
+                switchToCrop(seriesName, newFocus)
+                print("Successfully set " + newFocus + " as the focus.")
+
+            # if crop does not exist, make the guided crop
+            else:
                 print("\nThis crop does not exist.")
                 input("Press enter to create a new crop for this object (press Ctrl+c to exit).")
-                obj = newFocus
-
                 
+                obj = newFocus # set obj variable as newFocus variable
+
+                # switch to the original crop focus if not on already
                 if cropFocus != "":
                     print("\nSwitching to original focus...")
                     switchToOriginal(seriesName, cropFocus)
@@ -668,6 +833,7 @@ try:
                 
                 print("\nLocating the object...")
 
+                # create a dictionary: key = section number, value = list of bounds
                 bounds_dict = {}
                 for sectionNum in sectionNums:
                     bounds_dict[sectionNum] = findBounds(seriesName + "." + str(sectionNum), obj)
@@ -683,48 +849,57 @@ try:
 
                 print("Completed successfully!")
 
-                # get the original series images
+                # get the original series images to make the guided crop
                 input("\nPress enter to select the original series images.")
 
+                # create tkinter object but don't display extra window
                 root = Tk()
                 root.attributes("-topmost", True)
                 root.withdraw()
-                
+
+                # open file explorer for user to select the image files
                 imageFiles = list(askopenfilenames(title="Select Image Files",
                                            filetypes=(("Image Files", "*.tif"),
                                                       ("All Files","*.*"))))
+
+                # stop program if user does not select images
                 if len(imageFiles) == 0:
                     raise Exception("No pictures were selected.")
 
                 
                 # ask the user for the cropping rad
                 rad = floatInput("\nWhat is the cropping radius in microns?: ")
-
+                
+                # create the folder for the cropped images
                 newLocation = seriesName + "_" + obj
                 os.mkdir(newLocation)
-                
+
+                # get section info for every section
                 sectionInfo = {}
                 for sectionNum in sectionNums:
                     sectionInfo[sectionNum] = getSectionInfo(seriesName + "." + str(sectionNum))
 
-                # Create new trace files with shift domain origins
-
+                # create new trace files with shift domain origins
                 print("\nCreating new domain origins file...")
-
                 newTransformationsFile = open(newLocation + "/LOCAL_TRANSFORMATIONS.txt", "w")
 
+                # shift the domain origins to bottom left corner of planned crop
                 for sectionNum in sectionNums:
-                    
-                    # shift the domain origins to bottom left corner of planned crop
-                    inv_orig_trans = np.linalg.inv(coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1]))
-                    min_coords = np.matmul(inv_orig_trans, [[bounds_dict[sectionNum][0]],[bounds_dict[sectionNum][2]],[1]])
-                    pixPerMic = 1.0 / sectionInfo[sectionNum][2]
+
+                    # fix the coordinates to the picture
+                    inv_orig_trans = np.linalg.inv(coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1])) # get the inverse section transformation
+                    min_coords = np.matmul(inv_orig_trans, [[bounds_dict[sectionNum][0]],[bounds_dict[sectionNum][2]],[1]]) # transform the bottom left corner coordinates
+
+                    # translate coordinates to pixels
+                    pixPerMic = 1.0 / sectionInfo[sectionNum][2] # get image magnification
                     xshift_pix = int((min_coords[0][0] - rad) * pixPerMic)
                     if xshift_pix < 0:
                         xshift_pix = 0
                     yshift_pix = int((min_coords[1][0] - rad) * pixPerMic)
                     if yshift_pix < 0:
                         yshift_pix = 0
+
+                    # write the shifted origin to the transformations file
                     newTransformationsFile.write("Section " + str(sectionNum) + "\n" +
                                                  "xshift: " + str(xshift_pix) + "\n" +
                                                  "yshift: " + str(yshift_pix) + "\n" +
@@ -735,10 +910,9 @@ try:
                 print("LOCAL_TRANSFORMATIONS.txt has been stored.")
                 print("Do NOT delete this file.")
 
-                # Crop each image
-
                 print("\nCropping images around bounds...")
 
+                # crop each image
                 for sectionNum in sectionNums:   
                         
                     fileName = imageFiles[sectionNum]
@@ -783,17 +957,6 @@ try:
                 switchToCrop(seriesName, obj)
 
                 print("Successfully set " + obj + " as the focus.")
-            
-            else:
-                if cropFocus != "":
-                    # switch to the original crop if not already on
-                    print("\nSwitching to original crop focus to prepare...")
-                    switchToOriginal(seriesName, cropFocus)
-                    print("Successfully set the original series as the focus.")
-                input("\nPress enter to continue and switch cropping focus to " + newFocus)
-                print("\nSwitching to " + newFocus + "...")
-                switchToCrop(seriesName, newFocus)
-                print("Successfully set " + newFocus + " as the focus.")
 
 
     # cropping a new set of images if there is no detected series file
@@ -802,53 +965,75 @@ try:
         seriesName = input("\nPlease enter the desired name for the series: ")
         input("\nPress enter to select the pictures you would like to crop.")
 
+        # create tkinter object but don't display extra window
         root = Tk()
         root.attributes("-topmost", True)
         root.withdraw()
-        
+
+        # open file explorer for user to select images
         imageFiles = list(askopenfilenames(title="Select Image Files",
                                    filetypes=(("Image Files", "*.tif"),
                                               ("All Files","*.*"))))
+
+        # stop program if user does not select images
         if len(imageFiles) == 0:
                     raise Exception("No pictures were selected.")
-        
+
+        # get grid information
         xchunks = intInput("\nHow many horizontal chunks would you like to have?: ")
         ychunks = intInput("How many vertical chunks would you like to have?: ")
-
-        micPerPix = floatInput("\nHow many microns per pixel are there for this series?: ")
-        sectionThickness = floatInput("What would you like to set as the section thickness?: ")
         overlap = floatInput("How many microns of overlap should there be between chunks?: ")
+        
+        # get series information
+        micPerPix = floatInput("\nHow many microns per pixel are there for this series?: ")
+        sectionThickness = floatInput("What would you like to set as the section thickness? (in microns): ")
 
+        # check if there is an existing transformation file
         isTrans = ynInput("\nIs there an existing transformation file for this series? (y/n): ")
 
+        # get the transformation file if needed
         if isTrans:
             input("Press enter to select the file containing the transformations.")
             baseTransformations = askopenfilename(title="Select Transformation File",
                                    filetypes=(("Data File", "*.dat"),
                                               ("All Files","*.*")))
 
+            # section 0 is often the grid and does not get aligned
+            trans_offset = intInput("What section does the transformation start on?\n" +
+                                    "(this program starts on section 0): ")
+
         # store domain transformation for each of the sections and store them in a text file
         origTransFile = open("ORIGINAL_TRANSFORMATIONS.txt", "w")
-        
+
+        # if the series does have an existing transformation, apply it
         if isTrans:
             print("\nIdentifying and storing original transformations...")
             baseTransFile = open(baseTransformations, "r")
+
+            # iterate through each line (or section)
             for line in baseTransFile.readlines():
+
+                # get info from line
                 splitLine = line.split()
-                sectionNum = int(splitLine[0])
+                sectionNum = int(splitLine[0]) + trans_offset
                 matrixLine = [float(num) for num in splitLine[1:7]]
                 transMatrix = [[matrixLine[0],matrixLine[1],matrixLine[2]],
                                [matrixLine[3],matrixLine[4],matrixLine[5]],
                                [0,0,1]]
+
+                # convert the translation components so that fit microns
                 transMatrix[0][2] *= micPerPix
                 transMatrix[1][2] *= micPerPix
-                itransMatrix = np.linalg.inv(transMatrix)
+                itransMatrix = np.linalg.inv(transMatrix) # get the inverse
+
+                # write the transformation data to the original transformations file
                 origTransFile.write("Section " + str(sectionNum) + "\n" +
                                     "xcoef: " + str(itransMatrix[0][2]) + " " + str(itransMatrix[0][0]) +
                                     " " + str(itransMatrix[0][1]) + " 0 0 0\n" +
                                     "xcoef: " + str(itransMatrix[1][2]) + " " + str(itransMatrix[1][0]) +
                                     " " + str(itransMatrix[1][1]) + " 0 0 0\n")
             
+        # if the series does not have an existing transformation file, then set all transformations to identity
         else:
             origTransFile = open("ORIGINAL_TRANSFORMATIONS.txt", "w")
             for i in range(len(imageFiles)):
@@ -918,10 +1103,9 @@ try:
 
             print("Completed!")
 
-        # Create new local transformations files
-
         print("\nStoring new transformation data...")
 
+        # iterate through each of the chunks to create the local transformations file
         for x in range(xchunks):
             for y in range(ychunks):
                 newTransformationsFile = open(seriesName + "_" + str(x) + "," + str(y) +
@@ -939,12 +1123,11 @@ try:
 
         print("LOCAL_TRANSFORMATIONS.txt has been stored in each folder.")
         print("Do NOT delete this file.")
-                      
-
-        # create blank section and series files
 
         print("\nCreating new section and series files...")
-        
+
+        # store a blank section file in the program
+        # could be stored in txt file but having everything in one file keeps it simple for user
         blankSectionFile = """<?xml version="1.0"?>
     <!DOCTYPE Section SYSTEM "section.dtd">
     <Section index="[SECTION_INDEX]" thickness="[SECTION_THICKNESS]" alignLocked="false">
@@ -962,16 +1145,16 @@ try:
     </Transform>
     </Section>"""
 
+        # replace the unknowns in the section file with known info
         blankSectionFile = blankSectionFile.replace("[SECTION_THICKNESS]", str(sectionThickness))
         blankSectionFile = blankSectionFile.replace("[TRANSFORM_DIM]", "3")
-
         blankSectionFile = blankSectionFile.replace("[IMAGE_MAG]", str(micPerPix))
         blankSectionFile = blankSectionFile.replace("[IMAGE_LENGTH]", str(int(img_length_max)))
         blankSectionFile = blankSectionFile.replace("[IMAGE_HEIGHT]", str(int(img_height_max)))
 
-        
         origTrans = open("ORIGINAL_TRANSFORMATIONS.txt", "r")
-        
+
+        # iterate through each section and create the section file
         for i in range(len(imageFiles)):
             newSectionFile = open(seriesName + "." + str(i), "w")
 
@@ -982,6 +1165,7 @@ try:
             ycoef_data = origTrans.readline()
             ycoef_str = ycoef_data[ycoef_data.find(":")+1 : ycoef_data.find("\n")]
 
+            # replace section-specific unknowns with known info
             sectionFileText = blankSectionFile.replace("[SECTION_INDEX]", str(i))
             sectionFileText = sectionFileText.replace("[IMAGE_SOURCE]", seriesName + "." + str(i) + ".tif")
             sectionFileText = sectionFileText.replace("[XCOEF]", xcoef_str)
@@ -990,6 +1174,7 @@ try:
             newSectionFile.write(sectionFileText)
             newSectionFile.close()
 
+        # create the series file
         blankSeriesFile = """<?xml version="1.0"?>
     <!DOCTYPE Series SYSTEM "series.dtd">
     <Series index="0" viewport="0 0 0.00254"

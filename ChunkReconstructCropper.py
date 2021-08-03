@@ -627,6 +627,15 @@ try:
     # boolean to keep track if module needs to be imported
     needs_import = False
 
+    # find the site-packages folder to put the modules into
+    for p in sys.path:
+        if p.endswith("site-packages"):
+            module_dir = p
+            
+    # raise an error if there is no site-packages folder
+    if not module_dir:
+        raise Exception("There is no site-packages folder located on the path.")
+
     # try to import numpy
     try:
         import numpy as np
@@ -690,15 +699,7 @@ try:
         # download modules if user does not locate them
         if not directing:
             input("\nPress enter to download the modules.")
-            # find the site-packages folder to put the modules into
-            for p in sys.path:
-                if p.endswith("site-packages"):
-                    module_dir = p
-                    
-            # raise an error if there is no site-packages folder
-            if not module_dir:
-                raise Exception("There is no site-packages folder located on the path.")
-
+            
             # create the batch file
             bat = open("InstallModules.bat", "w")
             bat.write(numpy_bat)

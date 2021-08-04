@@ -242,9 +242,6 @@ def switchToOriginal(seriesName, objName):
                 
         newLocalTrans.write(line)
 
-    # transform all of the z-traces
-    transformZtraces(seriesName + ".ser", iDtrans_dict)
-
     newLocalTrans.close()
             
 
@@ -264,9 +261,6 @@ def switchToCrop(seriesName, objName):
     
     # save current alignment on original
     saveOriginalTransformations(seriesName, sectionNums)
-
-    # store transformations (for z-traces)
-    Dtrans_dict = {}
 
     # grab transformation data from each of the files
     for line in lines:
@@ -289,14 +283,8 @@ def switchToCrop(seriesName, objName):
             # transform all the traces by the Dtrans matrix
             transformAllTraces(seriesName + "." + str(sectionNum),
                                DtransMatrix, # shift all traces by this matrix
-                               xshift_pix, yshift_pix, objName) # shift the origins change image source
+                               xshift_pix, yshift_pix, objName) # shift the origins change image source        
 
-            # add transformation to dictionary
-            Dtrans_dict[sectionNum] = DtransMatrix
-
-    # transform all of the z-traces
-    transformZtraces(seriesName + ".ser", Dtrans_dict)
-        
     
 def checkForRealignment(seriesName, objName):
     """Check for differences in domain alignment between cropped and original series."""
@@ -355,6 +343,95 @@ def checkForRealignment(seriesName, objName):
     localTransFile.close()
 
     return iDtransList
+
+def changeOriginalTransformations(seriesName, sectionNums, newTransFile, startTrans):
+    """Change the original transformation of a series based on a .dat file"""
+
+    # get transformations for all sections
+    sectionInfo = {}
+    firstSection = True
+    for sectionNum in sectionNums:
+        sectionInfo[sectionNum] = getSectionInfo(seriesName + "." + str(sectionNum))
+        if firstSection:
+            micPerPix = sectionInfo[sectionNum][2]
+            trans_offset = startTrans - sectionNum
+            firstSection = False
+
+    # get new transformations
+    new_trans = getNewTransformations(newTransFile, micPerPix)
+
+    # go through each section and get the change transformation
+    all_Dtrans = {}
+    i = 0
+    for sectionNum in sectionNums:
+        if i - trans_offset < 0:
+            Dtrans = np.array([[1,0,0],[0,1,0],[0,0,1]]) # no transformation if section is not changed
+        else:
+            Dtrans = np.matmul(new_trans[i - trans_offset],
+                               np.linalg.inv(coefToMatrix(sectionInfo[sectionNum][0],
+                                                          sectionInfo[sectionNum][1])))
+        all_Dtrans[sectionNum] = Dtrans
+
+        # transform all of the traces AND the domain by the change transformation
+        transformAllTraces(seriesName + "." + str(sectionNum), Dtrans, 0, 0, "")
+        
+        i += 1
+
+    # change the original transformations file
+    origTransFile = open("ORIGINAL_TRANSFORMATIONS.txt", "w")
+    i = 0
+    for sectionNum in sectionNums:
+        if i - trans_offset < 0:
+
+            # if there is no transformation data for the section, keep the old transformation
+            origTransFile.write("Section " + str(sectionNum) + "\n" +
+                                "xcoef: " + str(sectionInfo[sectionNum][0][0]) +
+                                " " + str(sectionInfo[sectionNum][0][1]) +
+                                " " + str(sectionInfo[sectionNum][0][2]) + " 0 0 0\n" +
+                                "ycoef: " + str(sectionInfo[sectionNum][1][0]) +
+                                " " + str(sectionInfo[sectionNum][1][1]) +
+                                " " + str(sectionInfo[sectionNum][1][2]) + " 0 0 0\n")
+        else:
+            itransMatrix = np.linalg.inv(new_trans[i - trans_offset]) # get the inverse
+
+            # write the new transformation data to the original transformations file
+            origTransFile.write("Section " + str(sectionNum) + "\n" +
+                                "xcoef: " + str(itransMatrix[0][2]) + " " + str(itransMatrix[0][0]) +
+                                " " + str(itransMatrix[0][1]) + " 0 0 0\n" +
+                                "ycoef: " + str(itransMatrix[1][2]) + " " + str(itransMatrix[1][0]) +
+                                " " + str(itransMatrix[1][1]) + " 0 0 0\n")
+        i += 1
+    
+    origTransFile.close()
+        
+
+def getNewTransformations(baseTransformations, micPerPix):
+    """Returns all of the transformation matrices from a .dat file"""
+
+    # store file information
+    baseTransFile = open(baseTransformations, "r")
+    lines = baseTransFile.readlines()
+    baseTransFile.close()
+    
+    all_transformations = []
+
+    # iterate through each line (or section)
+    for line in lines:
+
+        # get info from line
+        splitLine = line.split()
+        matrixLine = [float(num) for num in splitLine[1:7]]
+        transMatrix = [[matrixLine[0],matrixLine[1],matrixLine[2]],
+                       [matrixLine[3],matrixLine[4],matrixLine[5]],
+                       [0,0,1]]
+
+        # convert the translation components so that fit microns
+        transMatrix[0][2] *= micPerPix
+        transMatrix[1][2] *= micPerPix
+
+        all_transformations.append(transMatrix)
+
+    return all_transformations   
 
 
 def transformAllTraces(fileName, transformation, xshift_pix, yshift_pix, objName):
@@ -440,8 +517,9 @@ def transformAllTraces(fileName, transformation, xshift_pix, yshift_pix, objName
             imageFile = line.split('"')[1] # get the current image source
             if "/" in imageFile and objName == "": # if image source is focused on a crop and switching to original
                 imageFile = imageFile[imageFile.find("/")+1:]
-            else: # if image source is set to original and switching to a crop
+            elif not "/" in imageFile and objName != "": # if image source is set to original and switching to a crop
                 imageFile = seriesName + "_" + objName + "/" + imageFile
+            # otherwise, don't mess with the image source
                 
             line = ' src="' + imageFile + '" />\n'
 
@@ -478,55 +556,6 @@ def transformAllTraces(fileName, transformation, xshift_pix, yshift_pix, objName
         newSectionFile.write(line)
 
     newSectionFile.close()
-
-def transformZtraces(fileName, transformation_dict):
-    """Transform all of the ztraces in a series file."""
-
-    # read all of the lines in the series file
-    seriesFile = open(fileName, "r")
-    lines = seriesFile.readlines()
-    seriesFile.close()
-
-    # create new series file
-    newSeriesFile = open(fileName, "w")
-
-    # iterate through series file
-    recording = False
-    for line in lines:
-
-        # if at end of points while recording, stop recording
-        if recording and line.strip() == '"/>':
-            recording = False
-
-        # transform points if recording
-        if recording:
-
-            # split line to get info
-            split_line = line.replace('points="',"").split()
-            x_coord = float(split_line[0])
-            y_coord = float(split_line[1])
-            sectionNum = int(split_line[2].replace(",",""))
-
-            # transform coordinates
-            coords = [[x_coord],[y_coord],[1]]
-            trans_coords = np.matmul(transformation_dict[sectionNum], coords)
-
-            # replace old with new coordinates
-            line = line.replace(split_line[0], str(round(trans_coords[0][0],4)))
-            line = line.replace(split_line[1], str(round(trans_coords[1][0],4)))       
-
-        # if iterator reaches beginning of Ztrace
-        if line.startswith("<ZContour name="):
-            recording = True
-
-        newSeriesFile.write(line)
-
-def coefToMatrix(xcoef, ycoef):
-    """Turn a set of x and y coef into a transformation matrix."""
-    
-    return np.linalg.inv(np.array([[xcoef[1], xcoef[2], xcoef[0]],
-                       [ycoef[1], ycoef[2], ycoef[0]],
-                       [0, 0, 1]]))
 
 
 def getCropFocus(sectionFileName, seriesName):
@@ -577,6 +606,14 @@ def saveOriginalTransformations(seriesName, sectionNums):
                                   "xcoef: " + xcoef_str + "\n" +
                                   "ycoef: " + ycoef_str + "\n")
     transformationsFile.close()
+
+
+def coefToMatrix(xcoef, ycoef):
+    """Turn a set of x and y coef into a transformation matrix."""
+    
+    return np.linalg.inv(np.array([[xcoef[1], xcoef[2], xcoef[0]],
+                       [ycoef[1], ycoef[2], ycoef[0]],
+                       [0, 0, 1]]))
 
 
 def intInput(inputStr):
@@ -734,6 +771,8 @@ except Exception as e:
 # MAIN P2: Cropping and user interface for switching crops
     
 try:
+    print("\nPlease ensure that Reconstruct is closed before running this program.")
+    input("Press enter to continue.")
 
     # determine if application is a script file or frozen exe
     if getattr(sys, 'frozen', False):
@@ -781,14 +820,33 @@ try:
 
         # prompt user for new focus
         print("\nPlease enter the coordinates or object you would like to focus on.")
-        newFocus = input("(x,y with no spaces or parentheses for coordinates): ")
+        newFocus = input("(press enter to focus on original series or change original alignment): ")
 
         # if switching to original
         if newFocus == "":
             
-            # if already on original
+            # if already on original, prompt user to change original transformation
             if cropFocus == "":
                 print("\nThe original series is already set as the focus.")
+                input("\nPress enter to import a new alignment for the original series.")
+                input("\nPress enter again to select the file containing the transformations.") # double confirmation
+
+                # open file explorer for user to select files
+                root = Tk()
+                root.attributes("-topmost", True)
+                root.withdraw()        
+                newTransFile = askopenfilename(title="Select Transformation File",
+                                       filetypes=(("Data File", "*.dat"),
+                                                  ("All Files","*.*")))
+                
+                # section 0 is often the grid and does not get aligned
+                startTrans = intInput("\nWhat section does the transformation start on?: ")
+
+                print("\nChanging original transformations...")
+                
+                changeOriginalTransformations(seriesName, sectionNums, newTransFile, startTrans)
+
+                print("Completed!")                
 
             # switch to original if not
             else: 
@@ -797,6 +855,7 @@ try:
                 print("\nSwitching to original series...")
                 switchToOriginal(seriesName, cropFocus)
                 print("Successfully set the original series as the focus.")
+                print("\nPlease run the program again and press enter at the prompt if you would like to change the original alignment.")
 
         # if switching to crop
         else:
@@ -1015,38 +1074,30 @@ try:
                                               ("All Files","*.*")))
 
             # section 0 is often the grid and does not get aligned
-            trans_offset = intInput("\nWhat section does the transformation start on?: ")
-
-        # store domain transformation for each of the sections and store them in a text file
-        origTransFile = open("ORIGINAL_TRANSFORMATIONS.txt", "w")
-
+            trans_offset = intInput("\nWhat section does the transformation start on?: ") - startSection
+        
         # if the series does have an existing transformation, apply it
         if isTrans:
             print("\nIdentifying and storing original transformations...")
-            baseTransFile = open(baseTransformations, "r")
 
-            # iterate through each line (or section)
-            for line in baseTransFile.readlines():
+            all_transformations = getNewTransformations(baseTransformations, micPerPix)
 
-                # get info from line
-                splitLine = line.split()
-                sectionNum = int(splitLine[0]) + startSection + trans_offset
-                matrixLine = [float(num) for num in splitLine[1:7]]
-                transMatrix = [[matrixLine[0],matrixLine[1],matrixLine[2]],
-                               [matrixLine[3],matrixLine[4],matrixLine[5]],
-                               [0,0,1]]
+            origTransFile = open("ORIGINAL_TRANSFORMATIONS.txt", "w")
+            for i in range(len(imageFiles)):
+                if i - trans_offset < 0:
+                    origTransFile.write("Section " + str(i + startSection) + "\n" +
+                                          "xcoef: 0 1 0 0 0 0\n" +
+                                          "ycoef: 0 0 1 0 0 0\n")
+                else:
+                    itransMatrix = np.linalg.inv(all_transformations[i - trans_offset]) # get the inverse
 
-                # convert the translation components so that fit microns
-                transMatrix[0][2] *= micPerPix
-                transMatrix[1][2] *= micPerPix
-                itransMatrix = np.linalg.inv(transMatrix) # get the inverse
-
-                # write the transformation data to the original transformations file
-                origTransFile.write("Section " + str(sectionNum) + "\n" +
-                                    "xcoef: " + str(itransMatrix[0][2]) + " " + str(itransMatrix[0][0]) +
-                                    " " + str(itransMatrix[0][1]) + " 0 0 0\n" +
-                                    "xcoef: " + str(itransMatrix[1][2]) + " " + str(itransMatrix[1][0]) +
-                                    " " + str(itransMatrix[1][1]) + " 0 0 0\n")
+                    # write the transformation data to the original transformations file
+                    origTransFile.write("Section " + str(i + startSection) + "\n" +
+                                        "xcoef: " + str(itransMatrix[0][2]) + " " + str(itransMatrix[0][0]) +
+                                        " " + str(itransMatrix[0][1]) + " 0 0 0\n" +
+                                        "ycoef: " + str(itransMatrix[1][2]) + " " + str(itransMatrix[1][0]) +
+                                        " " + str(itransMatrix[1][1]) + " 0 0 0\n")
+            origTransFile.close()
             
         # if the series does not have an existing transformation file, then set all transformations to identity
         else:
@@ -1054,9 +1105,8 @@ try:
             for i in range(len(imageFiles)):
                 origTransFile.write("Section " + str(i + startSection) + "\n" +
                                           "xcoef: 0 1 0 0 0 0\n" +
-                                          "ycoef: 0 0 1 0 0 0\n")        
-
-        origTransFile.close()
+                                          "ycoef: 0 0 1 0 0 0\n")
+            origTransFile.close()
 
         print("ORIGINAL_TRANSFORMATIONS.txt has been stored.")
         print("Do NOT delete this file.")
@@ -1197,7 +1247,7 @@ try:
         # create the series file
         blankSeriesFile = """<?xml version="1.0"?>
     <!DOCTYPE Series SYSTEM "series.dtd">
-    <Series index="0" viewport="0 0 0.00254"
+    <Series index="[SECTION_NUM]" viewport="0 0 0.00254"
             units="microns"
             autoSaveSeries="true"
             autoSaveSection="true"
@@ -1540,6 +1590,8 @@ try:
             12 12,
             "/>
     </Series>"""
+
+        blankSeriesFile = blankSeriesFile.replace("[SECTION_NUM]", str(startSection))
 
         newSeriesFile = open(seriesName + ".ser", "w")
         newSeriesFile.write(blankSeriesFile)

@@ -435,7 +435,7 @@ def transformAllTraces(fileName, transformation, xshift_pix, yshift_pix, objName
             # write line that was set in previous elif statement
             line = ycoef_line
 
-        # cif iterator is on the image source line
+        # if iterator is on the image source line
         elif i == domainIndex - 1:
             imageFile = line.split('"')[1] # get the current image source
             if "/" in imageFile and objName == "": # if image source is focused on a crop and switching to original
@@ -850,22 +850,33 @@ try:
 
                 print("Completed successfully!")
 
-                # get the original series images to make the guided crop
-                input("\nPress enter to select the original series images.")
+                # get section info for every section
+                sectionInfo = {}
+                for sectionNum in sectionNums:
+                    sectionInfo[sectionNum] = getSectionInfo(seriesName + "." + str(sectionNum))
 
-                # create tkinter object but don't display extra window
-                root = Tk()
-                root.attributes("-topmost", True)
-                root.withdraw()
+                # check if section images are all in the directory
+                images_in_dir = True
+                for sectionNum in sectionNums:
+                    images_in_dir = images_in_dir and os.path.isfile(sectionInfo[sectionNum][3])
 
-                # open file explorer for user to select the image files
-                imageFiles = list(askopenfilenames(title="Select Image Files",
-                                           filetypes=(("Image Files", "*.tif"),
-                                                      ("All Files","*.*"))))
+                # get the original series images to make the guided crop if all images are not found
+                if not images_in_dir:
+                    input("\nPress enter to select the original series images.")
 
-                # stop program if user does not select images
-                if len(imageFiles) == 0:
-                    raise Exception("No pictures were selected.")
+                    # create tkinter object but don't display extra window
+                    root = Tk()
+                    root.attributes("-topmost", True)
+                    root.withdraw()
+
+                    # open file explorer for user to select the image files
+                    imageFiles = list(askopenfilenames(title="Select Image Files",
+                                               filetypes=(("Image Files", "*.tif"),
+                                                          ("All Files","*.*"))))
+
+                    # stop program if user does not select images
+                    if len(imageFiles) == 0:
+                        raise Exception("No pictures were selected.")
 
                 
                 # ask the user for the cropping rad
@@ -874,11 +885,6 @@ try:
                 # create the folder for the cropped images
                 newLocation = seriesName + "_" + obj
                 os.mkdir(newLocation)
-
-                # get section info for every section
-                sectionInfo = {}
-                for sectionNum in sectionNums:
-                    sectionInfo[sectionNum] = getSectionInfo(seriesName + "." + str(sectionNum))
 
                 # create new trace files with shift domain origins
                 print("\nCreating new domain origins file...")
@@ -912,16 +918,24 @@ try:
                 print("Do NOT delete this file.")
 
                 print("\nCropping images around bounds...")
-
+                
                 # crop each image
-                for sectionNum in sectionNums:   
-                        
-                    fileName = imageFiles[sectionNum]
+                counter = 0
+                for sectionNum in sectionNums:
+
+                    # get the name of the desired image file
+                    if images_in_dir:
+                        fileName = sectionInfo[sectionNum][3]
+                        filePath = fileName
+                    else:
+                        filePath = imageFiles[counter]
+                        fileName = filePath[filePath.rfind("/")+1:]
+                        counter += 1
 
                     print("\nWorking on " + fileName + "...")
                     
                     # open original image
-                    img = PILImage.open(fileName)
+                    img = PILImage.open(filePath)
 
                     # get image dimensions
                     img_length, img_height = img.size
@@ -948,7 +962,7 @@ try:
 
                     # crop the photo
                     cropped = img.crop((left, top, right, bottom))
-                    cropped.save(newLocation + "/" + seriesName + "." + str(sectionNum) + ".tif")
+                    cropped.save(newLocation + "/" + fileName)
                     
                     print("Saved!")
 
@@ -978,7 +992,7 @@ try:
 
         # stop program if user does not select images
         if len(imageFiles) == 0:
-                    raise Exception("No pictures were selected.")
+            raise Exception("No pictures were selected.")
 
         # get grid information
         xchunks = intInput("\nHow many horizontal chunks would you like to have?: ")
@@ -986,7 +1000,8 @@ try:
         overlap = floatInput("How many microns of overlap should there be between chunks?: ")
         
         # get series information
-        micPerPix = floatInput("\nHow many microns per pixel are there for this series?: ")
+        startSection = intInput("\nWhat number should the sections start on?: ")
+        micPerPix = floatInput("How many microns per pixel are there for this series?: ")
         sectionThickness = floatInput("What would you like to set as the section thickness? (in microns): ")
 
         # check if there is an existing transformation file
@@ -1000,8 +1015,7 @@ try:
                                               ("All Files","*.*")))
 
             # section 0 is often the grid and does not get aligned
-            trans_offset = intInput("\nWhat section does the transformation start on?\n" +
-                                    "(this program starts on section 0): ")
+            trans_offset = intInput("\nWhat section does the transformation start on?: ")
 
         # store domain transformation for each of the sections and store them in a text file
         origTransFile = open("ORIGINAL_TRANSFORMATIONS.txt", "w")
@@ -1016,7 +1030,7 @@ try:
 
                 # get info from line
                 splitLine = line.split()
-                sectionNum = int(splitLine[0]) + trans_offset
+                sectionNum = int(splitLine[0]) + startSection + trans_offset
                 matrixLine = [float(num) for num in splitLine[1:7]]
                 transMatrix = [[matrixLine[0],matrixLine[1],matrixLine[2]],
                                [matrixLine[3],matrixLine[4],matrixLine[5]],
@@ -1038,7 +1052,7 @@ try:
         else:
             origTransFile = open("ORIGINAL_TRANSFORMATIONS.txt", "w")
             for i in range(len(imageFiles)):
-                origTransFile.write("Section " + str(i) + "\n" +
+                origTransFile.write("Section " + str(i + startSection) + "\n" +
                                           "xcoef: 0 1 0 0 0 0\n" +
                                           "ycoef: 0 0 1 0 0 0\n")        
 
@@ -1063,7 +1077,10 @@ try:
         # start iterating through each of the images
         for i in range(len(imageFiles)):
 
-            print("\nWorking on " + imageFiles[i][imageFiles[i].rfind("/")+1:] + "...")
+            file_path = imageFiles[i]
+            file_name = file_path[file_path.rfind("/")+1:]
+
+            print("\nWorking on " + file_name + "...")
 
             # open image and get dimensions
             img = PILImage.open(imageFiles[i])
@@ -1095,12 +1112,10 @@ try:
                     # crop the photo
                     cropped = img.crop((left, top, right, bottom))
                     
-                    newDomainOrigins[x].append((left,
-                                                int(img_height-1 - bottom)))
+                    newDomainOrigins[x].append((left, int(img_height-1 - bottom)))
 
                     # save as uncompressed TIF
-                    cropped.save(seriesName + "_" + str(x) + "," + str(y) + "/" +
-                             seriesName + "." + str(i) + ".tif")
+                    cropped.save(seriesName + "_" + str(x) + "," + str(y) + "/" + file_name)
 
             print("Completed!")
 
@@ -1116,7 +1131,7 @@ try:
                     # shift the domain origins to bottom left corner of planned crop
                     xshift_pix = newDomainOrigins[x][y][0]
                     yshift_pix = newDomainOrigins[x][y][1]
-                    newTransformationsFile.write("Section " + str(i) + "\n" +
+                    newTransformationsFile.write("Section " + str(i + startSection) + "\n" +
                                                  "xshift: " + str(xshift_pix) + "\n" +
                                                  "yshift: " + str(yshift_pix) + "\n" +
                                                  "Dtrans: 1 0 0 0 1 0\n")
@@ -1157,7 +1172,11 @@ try:
 
         # iterate through each section and create the section file
         for i in range(len(imageFiles)):
-            newSectionFile = open(seriesName + "." + str(i), "w")
+
+            file_path = imageFiles[i]
+            file_name = file_path[file_path.rfind("/")+1:]
+            
+            newSectionFile = open(seriesName + "." + str(i + startSection), "w")
 
             # retrieve original transformations
             origTrans.readline()
@@ -1167,8 +1186,8 @@ try:
             ycoef_str = ycoef_data[ycoef_data.find(":")+1 : ycoef_data.find("\n")]
 
             # replace section-specific unknowns with known info
-            sectionFileText = blankSectionFile.replace("[SECTION_INDEX]", str(i))
-            sectionFileText = sectionFileText.replace("[IMAGE_SOURCE]", seriesName + "." + str(i) + ".tif")
+            sectionFileText = blankSectionFile.replace("[SECTION_INDEX]", str(i + startSection))
+            sectionFileText = sectionFileText.replace("[IMAGE_SOURCE]", file_name)
             sectionFileText = sectionFileText.replace("[XCOEF]", xcoef_str)
             sectionFileText = sectionFileText.replace("[YCOEF]", ycoef_str)
 
@@ -1525,9 +1544,10 @@ try:
         newSeriesFile = open(seriesName + ".ser", "w")
         newSeriesFile.write(blankSeriesFile)
         newSeriesFile.close()
+        origTrans.close()
         print("Completed!")
 
-        print("\nSwitching focus to (0,0)...")
+        print("\nSwitching focus to 0,0...")
         switchToCrop(seriesName, "0,0")
         print("Completed!")
 

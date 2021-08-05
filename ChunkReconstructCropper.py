@@ -784,10 +784,10 @@ try:
     os.chdir(application_path)
     print("\nCurrent working directory: " + os.getcwd())
 
-    change = ynInput("Would you like to change the working directory? (y/n): ")
+    keep_dir = ynInput("Would you like to keep this working directory? (y/n): ")
 
     # prompt user to select new directory if desired
-    if change:
+    if not keep_dir:
         input("\nPress enter to select the new working directory.")
 
         # create tkinter object but don't display extra window
@@ -796,41 +796,60 @@ try:
         root.withdraw()
 
         # open file explorer to select new working directory
-        os.chdir(askdirectory(title="Select Folder"))
-
+        new_dir = askdirectory(title="Select Folder")
+        if not new_dir:
+            print("No folder selected. Using original working directory.")
+        else:
+            print("New working directory: " + new_dir)
+            os.chdir(new_dir)
+        
     # locate the series file and get series name if found
     print("\nLocating series file...")
-    fileName = ""
+    seriesFileName = ""
     for file in os.listdir("."):
         if file.endswith(".ser"):
-            fileName = str(file)
+            seriesFileName = str(file)
 
     # prompt user to switch crops if there is an existing series file
-    if fileName:
+    if seriesFileName:
 
-        # gather series info data
-        seriesName, sectionNums = getSeriesInfo(fileName)
+        master_choice = " "
 
-        # find and output the current crop focus
-        cropFocus = getCropFocus(seriesName + "." + str(sectionNums[0]), seriesName)
-        if cropFocus:
-            print("This series is currently focused on: " + cropFocus)
-        else:
-            print("This series is currently set to the original set of images.")
+        while master_choice != "":
+        
+            # gather series info data
+            seriesName, sectionNums = getSeriesInfo(seriesFileName)
 
-        # prompt user for new focus
-        print("\nPlease enter the coordinates or object you would like to focus on.")
-        newFocus = input("(press enter to focus on original series or change original alignment): ")
+            print("\n----------------------------MENU----------------------------")
 
-        # if switching to original
-        if newFocus == "":
-            
-            # if already on original, prompt user to change original transformation
-            if cropFocus == "":
-                print("\nThe original series is already set as the focus.")
-                input("\nPress enter to import a new alignment for the original series.")
-                input("\nPress enter again to select the file containing the transformations.") # double confirmation
+            # find and output the current crop focus
+            cropFocus = getCropFocus(seriesName + "." + str(sectionNums[0]), seriesName)
+            if cropFocus:
+                print("\nThis series is currently focused on: " + cropFocus)
+            else:
+                print("\nThis series is currently set to the original set of images.")
 
+            isChunked = os.path.isdir(seriesName + "_0,0")
+
+            print("\nPlease select from the following options:")
+            print("1: Switch to the original set of images")
+            print("2: Switch to set of images cropped around an object")
+            if isChunked:
+                print("3: Switch to a specific chunk")
+            print("0: Change the original alignment")
+
+            master_choice = input("\nEnter your menu choice (or press enter to exit): ")
+
+            # if changing alignment
+            if master_choice == "0":
+
+                if cropFocus != "":
+                    print("\nSwitching back to original series...")
+                    switchToOriginal(seriesName, cropFocus)
+                    print("Successfully set the original series as the focus.")
+
+                input("\nPress enter to select the file containing the transformations.")
+                
                 # open file explorer for user to select files
                 root = Tk()
                 root.attributes("-topmost", True)
@@ -846,197 +865,230 @@ try:
                 
                 changeOriginalTransformations(seriesName, sectionNums, newTransFile, startTrans)
 
-                print("Completed!")                
+                print("Completed!")
 
-            # switch to original if not
-            else: 
-                print("\nWould you like to switch to the original series?")
-                input("Press enter to continue or Ctrl+c to exit.")
-                print("\nSwitching to original series...")
-                switchToOriginal(seriesName, cropFocus)
-                print("Successfully set the original series as the focus.")
-                print("\nPlease run the program again and press enter at the prompt if you would like to change the original alignment.")
-
-        # if switching to crop
-        else:
-
-            # if already on desired crop
-            if cropFocus == newFocus:
-                print("\n" + newFocus + " is already set as the focus.")
-
-            # if switching to an existing crop
-            elif os.path.isdir(seriesName + "_" + newFocus):
-
-                # switch to the original crop if not already on
                 if cropFocus != "":
-                    print("\nSwitching to original crop focus to prepare...")
+                    print("\nSwitching back to previous focus...")
+                    switchToCrop(seriesName, cropFocus)
+                    print("Successfully reset focus to " + cropFocus + ".")
+
+            # if switching to original
+            if master_choice == "1":
+                
+                # if already on original, prompt user to change original transformation
+                if cropFocus == "":
+                    print("\nThe original series is already set as the focus.")                                    
+
+                # switch to original if not
+                else: 
+                    print("\nWould you like to switch to the original series?")
+                    input("Press enter to continue or Ctrl+c to exit.")
+                    print("\nSwitching to original series...")
                     switchToOriginal(seriesName, cropFocus)
                     print("Successfully set the original series as the focus.")
-                
-                input("\nPress enter to continue and switch cropping focus to " + newFocus)
-                print("\nSwitching to " + newFocus + "...")
-                switchToCrop(seriesName, newFocus)
-                print("Successfully set " + newFocus + " as the focus.")
 
-            # if crop does not exist, make the guided crop
-            else:
-                print("\nThis crop does not exist.")
-                input("Press enter to create a new crop for this object (press Ctrl+c to exit).")
-                
-                obj = newFocus # set obj variable as newFocus variable
+            # if switching to crop
+            if master_choice == "2" or master_choice == "3" and isChunked:
 
-                # switch to the original crop focus if not on already
-                if cropFocus != "":
-                    print("\nSwitching to original focus...")
-                    switchToOriginal(seriesName, cropFocus)
-                    print("Switched to original focus.")
-                
-                print("\nLocating the object...")
+                # get the name of the desired object
+                newFocus = ""
+                while newFocus == "":
+                    if master_choice == "2":
+                        newFocus = input("\nPlease enter the name of the object you would like to focus on: ")
+                    if master_choice == "3":
+                        newFocus = input("\nPlease enter the coordinates you would like to focus on.\n" +
+                                         "(x,y with no spaces or parenthesis): ")
+                    if newFocus == "":
+                        print("Please enter a valid object name.")
 
-                # create a dictionary: key = section number, value = list of bounds
-                bounds_dict = {}
-                for sectionNum in sectionNums:
-                    bounds_dict[sectionNum] = findBounds(seriesName + "." + str(sectionNum), obj)
-                bounds_dict = fillInBounds(bounds_dict)
+                # if already on desired crop
+                if cropFocus == newFocus:
+                    print("\n" + newFocus + " is already set as the focus.")
 
-                # check to see if the object was found, raise exception if not
-                noTraceFound = True
-                for bounds in bounds_dict:
-                    if bounds_dict[bounds] != None:
-                        noTraceFound = False
-                if noTraceFound:
-                    raise Exception("This trace does not exist in this series.")
+                # if switching to an existing crop
+                elif os.path.isdir(seriesName + "_" + newFocus):
 
-                print("Completed successfully!")
-
-                # get section info for every section
-                sectionInfo = {}
-                for sectionNum in sectionNums:
-                    sectionInfo[sectionNum] = getSectionInfo(seriesName + "." + str(sectionNum))
-
-                # check if section images are all in the directory
-                images_in_dir = True
-                for sectionNum in sectionNums:
-                    images_in_dir = images_in_dir and os.path.isfile(sectionInfo[sectionNum][3])
-
-                # get the original series images to make the guided crop if all images are not found
-                if not images_in_dir:
-                    input("\nPress enter to select the original series images.")
-
-                    # create tkinter object but don't display extra window
-                    root = Tk()
-                    root.attributes("-topmost", True)
-                    root.withdraw()
-
-                    # open file explorer for user to select the image files
-                    imageFiles = list(askopenfilenames(title="Select Image Files",
-                                               filetypes=(("Image Files", "*.tif"),
-                                                          ("All Files","*.*"))))
-
-                    # stop program if user does not select images
-                    if len(imageFiles) == 0:
-                        raise Exception("No pictures were selected.")
-
-                
-                # ask the user for the cropping rad
-                rad = floatInput("\nWhat is the cropping radius in microns?: ")
-                
-                # create the folder for the cropped images
-                newLocation = seriesName + "_" + obj
-                os.mkdir(newLocation)
-
-                # create new trace files with shift domain origins
-                print("\nCreating new domain origins file...")
-                newTransformationsFile = open(newLocation + "/LOCAL_TRANSFORMATIONS.txt", "w")
-
-                # shift the domain origins to bottom left corner of planned crop
-                for sectionNum in sectionNums:
-
-                    # fix the coordinates to the picture
-                    inv_orig_trans = np.linalg.inv(coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1])) # get the inverse section transformation
-                    min_coords = np.matmul(inv_orig_trans, [[bounds_dict[sectionNum][0]],[bounds_dict[sectionNum][2]],[1]]) # transform the bottom left corner coordinates
-
-                    # translate coordinates to pixels
-                    pixPerMic = 1.0 / sectionInfo[sectionNum][2] # get image magnification
-                    xshift_pix = int((min_coords[0][0] - rad) * pixPerMic)
-                    if xshift_pix < 0:
-                        xshift_pix = 0
-                    yshift_pix = int((min_coords[1][0] - rad) * pixPerMic)
-                    if yshift_pix < 0:
-                        yshift_pix = 0
-
-                    # write the shifted origin to the transformations file
-                    newTransformationsFile.write("Section " + str(sectionNum) + "\n" +
-                                                 "xshift: " + str(xshift_pix) + "\n" +
-                                                 "yshift: " + str(yshift_pix) + "\n" +
-                                                 "Dtrans: 1 0 0 0 1 0\n")
-
-                newTransformationsFile.close()
-
-                print("LOCAL_TRANSFORMATIONS.txt has been stored.")
-                print("Do NOT delete this file.")
-
-                print("\nCropping images around bounds...")
-                
-                # crop each image
-                counter = 0
-                for sectionNum in sectionNums:
-
-                    # get the name of the desired image file
-                    if images_in_dir:
-                        fileName = sectionInfo[sectionNum][3]
-                        filePath = fileName
-                    else:
-                        filePath = imageFiles[counter]
-                        fileName = filePath[filePath.rfind("/")+1:]
-                        counter += 1
-
-                    print("\nWorking on " + fileName + "...")
+                    # switch to the original crop if not already on
+                    if cropFocus != "":
+                        print("\nSwitching to original crop focus to prepare...")
+                        switchToOriginal(seriesName, cropFocus)
+                        print("Successfully set the original series as the focus.")
                     
-                    # open original image
-                    img = PILImage.open(filePath)
+                    print("\nSwitching to " + newFocus + "...")
+                    switchToCrop(seriesName, newFocus)
+                    print("Successfully set " + newFocus + " as the focus.")
 
-                    # get image dimensions
-                    img_length, img_height = img.size
+                # if crop does not exist, make the guided crop
+                elif not os.path.isdir(seriesName + "_" + newFocus) and master_choice == "2":
+                    print("\nThis crop does not exist.")
+                    input("Press enter to create a new crop for this object (press Ctrl+c to exit).")
                     
-                    # get magnification
-                    pixPerMic = 1.0 / sectionInfo[sectionNum][2]
+                    obj = newFocus # set obj variable as newFocus variable
+
+                    # switch to the original crop focus if not on already
+                    if cropFocus != "":
+                        print("\nSwitching to original focus...")
+                        switchToOriginal(seriesName, cropFocus)
+                        print("Switched to original focus.")
                     
-                    # get the bounds coordinates in pixels
-                    inv_orig_trans = np.linalg.inv(coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1]))
-                    min_coords = np.matmul(inv_orig_trans, [[bounds_dict[sectionNum][0]],[bounds_dict[sectionNum][2]],[1]])
-                    max_coords = np.matmul(inv_orig_trans, [[bounds_dict[sectionNum][1]],[bounds_dict[sectionNum][3]],[1]])
+                    print("\nLocating the object...")
 
-                    # get the pixel coordinates for each corner of the crop
-                    left = int((min_coords[0][0] - rad) * pixPerMic)
-                    bottom = img_height - int((min_coords[1][0] - rad) * pixPerMic)
-                    right = int((max_coords[0][0] + rad) * pixPerMic)
-                    top = img_height - int((max_coords[1][0] + rad) * pixPerMic)
+                    # create a dictionary: key = section number, value = list of bounds
+                    bounds_dict = {}
+                    for sectionNum in sectionNums:
+                        bounds_dict[sectionNum] = findBounds(seriesName + "." + str(sectionNum), obj)
+                    bounds_dict = fillInBounds(bounds_dict)
+
+                    # check to see if the object was found, raise exception if not
+                    noTraceFound = True
+                    for bounds in bounds_dict:
+                        if bounds_dict[bounds] != None:
+                            noTraceFound = False
+                    if noTraceFound:
+                        raise Exception("This trace does not exist in this series.")
+
+                    print("Completed successfully!")
+
+                    # get section info for every section
+                    sectionInfo = {}
+                    for sectionNum in sectionNums:
+                        sectionInfo[sectionNum] = getSectionInfo(seriesName + "." + str(sectionNum))
+
+                    # check if section images are all in the directory
+                    images_in_dir = True
+                    for sectionNum in sectionNums:
+                        images_in_dir = images_in_dir and os.path.isfile(sectionInfo[sectionNum][3])
+
+                    # get the original series images to make the guided crop if all images are not found
+                    if not images_in_dir:
+                        input("\nPress enter to select the original series images.")
+
+                        # create tkinter object but don't display extra window
+                        root = Tk()
+                        root.attributes("-topmost", True)
+                        root.withdraw()
+
+                        # open file explorer for user to select the image files
+                        imageFiles = list(askopenfilenames(title="Select Image Files",
+                                                   filetypes=(("Image Files", "*.tif"),
+                                                              ("All Files","*.*"))))
+
+                        # stop program if user does not select images
+                        if len(imageFiles) == 0:
+                            raise Exception("No pictures were selected.")
+
                     
-                    # if crop exceeds image boundary, cut it off
-                    if left < 0: left = 0
-                    if right >= img_length: right = img_length-1
-                    if top < 0: top = 0
-                    if bottom >= img_height: bottom = img_height-1
-
-                    # crop the photo
-                    cropped = img.crop((left, top, right, bottom))
-                    cropped.save(newLocation + "/" + fileName)
+                    # ask the user for the cropping rad
+                    rad = floatInput("\nWhat is the cropping radius in microns?: ")
                     
-                    print("Saved!")
+                    # create the folder for the cropped images
+                    newLocation = seriesName + "_" + obj
+                    os.mkdir(newLocation)
 
-                print("\nCropping has run successfully!")
+                    # create new trace files with shift domain origins
+                    print("\nCreating new domain origins file...")
+                    newTransformationsFile = open(newLocation + "/LOCAL_TRANSFORMATIONS.txt", "w")
 
-                print("\nSwitching to new crop...")
-                switchToCrop(seriesName, obj)
+                    # shift the domain origins to bottom left corner of planned crop
+                    for sectionNum in sectionNums:
 
-                print("Successfully set " + obj + " as the focus.")
+                        # fix the coordinates to the picture
+                        inv_orig_trans = np.linalg.inv(coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1])) # get the inverse section transformation
+                        min_coords = np.matmul(inv_orig_trans, [[bounds_dict[sectionNum][0]],[bounds_dict[sectionNum][2]],[1]]) # transform the bottom left corner coordinates
 
+                        # translate coordinates to pixels
+                        pixPerMic = 1.0 / sectionInfo[sectionNum][2] # get image magnification
+                        xshift_pix = int((min_coords[0][0] - rad) * pixPerMic)
+                        if xshift_pix < 0:
+                            xshift_pix = 0
+                        yshift_pix = int((min_coords[1][0] - rad) * pixPerMic)
+                        if yshift_pix < 0:
+                            yshift_pix = 0
+
+                        # write the shifted origin to the transformations file
+                        newTransformationsFile.write("Section " + str(sectionNum) + "\n" +
+                                                     "xshift: " + str(xshift_pix) + "\n" +
+                                                     "yshift: " + str(yshift_pix) + "\n" +
+                                                     "Dtrans: 1 0 0 0 1 0\n")
+
+                    newTransformationsFile.close()
+
+                    print("LOCAL_TRANSFORMATIONS.txt has been stored.")
+                    print("Do NOT delete this file.")
+
+                    print("\nCropping images around bounds...")
+                    
+                    # crop each image
+                    counter = 0
+                    for sectionNum in sectionNums:
+
+                        # get the name of the desired image file
+                        if images_in_dir:
+                            fileName = sectionInfo[sectionNum][3]
+                            filePath = fileName
+                        else:
+                            filePath = imageFiles[counter]
+                            fileName = filePath[filePath.rfind("/")+1:]
+                            counter += 1
+
+                        print("\nWorking on " + fileName + "...")
+                        
+                        # open original image
+                        img = PILImage.open(filePath)
+
+                        # get image dimensions
+                        img_length, img_height = img.size
+                        
+                        # get magnification
+                        pixPerMic = 1.0 / sectionInfo[sectionNum][2]
+                        
+                        # get the bounds coordinates in pixels
+                        inv_orig_trans = np.linalg.inv(coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1]))
+                        min_coords = np.matmul(inv_orig_trans, [[bounds_dict[sectionNum][0]],[bounds_dict[sectionNum][2]],[1]])
+                        max_coords = np.matmul(inv_orig_trans, [[bounds_dict[sectionNum][1]],[bounds_dict[sectionNum][3]],[1]])
+
+                        # get the pixel coordinates for each corner of the crop
+                        left = int((min_coords[0][0] - rad) * pixPerMic)
+                        bottom = img_height - int((min_coords[1][0] - rad) * pixPerMic)
+                        right = int((max_coords[0][0] + rad) * pixPerMic)
+                        top = img_height - int((max_coords[1][0] + rad) * pixPerMic)
+                        
+                        # if crop exceeds image boundary, cut it off
+                        if left < 0: left = 0
+                        if right >= img_length: right = img_length-1
+                        if top < 0: top = 0
+                        if bottom >= img_height: bottom = img_height-1
+
+                        # crop the photo
+                        cropped = img.crop((left, top, right, bottom))
+                        cropped.save(newLocation + "/" + fileName)
+                        
+                        print("Saved!")
+
+                    print("\nCropping has run successfully!")
+
+                    print("\nSwitching to new crop...")
+                    switchToCrop(seriesName, obj)
+
+                    print("Successfully set " + obj + " as the focus.")
+
+                # if the user enters invalid coords
+                elif not not os.path.isdir(seriesName + "_" + newFocus) and master_choice == "2":
+                    print("\nThese coordinates do not exist.")
+
+            if master_choice != "": input("\nPress enter to continue.")
 
     # cropping a new set of images if there is no detected series file
     else:
         print("\nThere does not appear to be an existing series.")
-        seriesName = input("\nPlease enter the desired name for the series: ")
+
+        # force user to give a series name
+        seriesName = ""
+        while seriesName == "":
+            seriesName = input("\nPlease enter the desired name for the series: ")
+            if seriesName == "":
+                print("Please enter a valid series name.")
+        
         input("\nPress enter to select the pictures you would like to crop.")
 
         # create tkinter object but don't display extra window
@@ -1169,7 +1221,7 @@ try:
 
             print("Completed!")
 
-        print("\nStoring new transformation data...")
+        print("\nStoring local transformation data...")
 
         # iterate through each of the chunks to create the local transformations file
         for x in range(xchunks):

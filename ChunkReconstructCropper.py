@@ -881,8 +881,6 @@ try:
 
                 # switch to original if not
                 else: 
-                    print("\nWould you like to switch to the original series?")
-                    input("Press enter to continue or Ctrl+c to exit.")
                     print("\nSwitching to original series...")
                     switchToOriginal(seriesName, cropFocus)
                     print("Successfully set the original series as the focus.")

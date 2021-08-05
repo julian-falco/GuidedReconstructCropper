@@ -939,142 +939,148 @@ try:
                         bounds_dict[sectionNum] = findBounds(seriesName + "." + str(sectionNum), obj)
                     bounds_dict = fillInBounds(bounds_dict)
 
-                    # check to see if the object was found, raise exception if not
+                    # check to see if the object was found
                     noTraceFound = True
                     for bounds in bounds_dict:
                         if bounds_dict[bounds] != None:
                             noTraceFound = False
+                    
                     if noTraceFound:
-                        raise Exception("This trace does not exist in this series.")
+                        print("\nThis trace does not exist in this series.")
 
-                    print("Completed successfully!")
+                    # if trace was found, continue
+                    else:
+                        print("Completed successfully!")
 
-                    # get section info for every section
-                    sectionInfo = {}
-                    for sectionNum in sectionNums:
-                        sectionInfo[sectionNum] = getSectionInfo(seriesName + "." + str(sectionNum))
+                        # get section info for every section
+                        sectionInfo = {}
+                        for sectionNum in sectionNums:
+                            sectionInfo[sectionNum] = getSectionInfo(seriesName + "." + str(sectionNum))
 
-                    # check if section images are all in the directory
-                    images_in_dir = True
-                    for sectionNum in sectionNums:
-                        images_in_dir = images_in_dir and os.path.isfile(sectionInfo[sectionNum][3])
+                        # check if section images are all in the directory
+                        images_in_dir = True
+                        for sectionNum in sectionNums:
+                            images_in_dir = images_in_dir and os.path.isfile(sectionInfo[sectionNum][3])
 
-                    # get the original series images to make the guided crop if all images are not found
-                    if not images_in_dir:
-                        input("\nPress enter to select the original series images.")
+                        # get the original series images to make the guided crop if all images are not found
+                        if not images_in_dir:
+                            input("\nPress enter to select the original series images.")
 
-                        # create tkinter object but don't display extra window
-                        root = Tk()
-                        root.attributes("-topmost", True)
-                        root.withdraw()
+                            # create tkinter object but don't display extra window
+                            root = Tk()
+                            root.attributes("-topmost", True)
+                            root.withdraw()
 
-                        # open file explorer for user to select the image files
-                        imageFiles = list(askopenfilenames(title="Select Image Files",
-                                                   filetypes=(("Image Files", "*.tif"),
-                                                              ("All Files","*.*"))))
+                            # open file explorer for user to select the image files
+                            imageFiles = list(askopenfilenames(title="Select Image Files",
+                                                       filetypes=(("Image Files", "*.tif"),
+                                                                  ("All Files","*.*"))))
 
-                        # stop program if user does not select images
-                        if len(imageFiles) == 0:
-                            raise Exception("No pictures were selected.")
+                            # stop program if user does not select images
+                            if len(imageFiles) == 0:
+                                raise Exception("No pictures were selected.")
 
-                    
-                    # ask the user for the cropping rad
-                    rad = floatInput("\nWhat is the cropping radius in microns?: ")
-                    
-                    # create the folder for the cropped images
-                    newLocation = seriesName + "_" + obj
-                    os.mkdir(newLocation)
-
-                    # create new trace files with shift domain origins
-                    print("\nCreating new domain origins file...")
-                    newTransformationsFile = open(newLocation + "/LOCAL_TRANSFORMATIONS.txt", "w")
-
-                    # shift the domain origins to bottom left corner of planned crop
-                    for sectionNum in sectionNums:
-
-                        # fix the coordinates to the picture
-                        inv_orig_trans = np.linalg.inv(coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1])) # get the inverse section transformation
-                        min_coords = np.matmul(inv_orig_trans, [[bounds_dict[sectionNum][0]],[bounds_dict[sectionNum][2]],[1]]) # transform the bottom left corner coordinates
-
-                        # translate coordinates to pixels
-                        pixPerMic = 1.0 / sectionInfo[sectionNum][2] # get image magnification
-                        xshift_pix = int((min_coords[0][0] - rad) * pixPerMic)
-                        if xshift_pix < 0:
-                            xshift_pix = 0
-                        yshift_pix = int((min_coords[1][0] - rad) * pixPerMic)
-                        if yshift_pix < 0:
-                            yshift_pix = 0
-
-                        # write the shifted origin to the transformations file
-                        newTransformationsFile.write("Section " + str(sectionNum) + "\n" +
-                                                     "xshift: " + str(xshift_pix) + "\n" +
-                                                     "yshift: " + str(yshift_pix) + "\n" +
-                                                     "Dtrans: 1 0 0 0 1 0\n")
-
-                    newTransformationsFile.close()
-
-                    print("LOCAL_TRANSFORMATIONS.txt has been stored.")
-                    print("Do NOT delete this file.")
-
-                    print("\nCropping images around bounds...")
-                    
-                    # crop each image
-                    counter = 0
-                    for sectionNum in sectionNums:
-
-                        # get the name of the desired image file
-                        if images_in_dir:
-                            fileName = sectionInfo[sectionNum][3]
-                            filePath = fileName
-                        else:
-                            filePath = imageFiles[counter]
-                            fileName = filePath[filePath.rfind("/")+1:]
-                            counter += 1
-
-                        print("\nWorking on " + fileName + "...")
                         
-                        # open original image
-                        img = PILImage.open(filePath)
-
-                        # get image dimensions
-                        img_length, img_height = img.size
+                        # ask the user for the cropping rad
+                        rad = floatInput("\nWhat is the cropping radius in microns?: ")
                         
-                        # get magnification
-                        pixPerMic = 1.0 / sectionInfo[sectionNum][2]
+                        # create the folder for the cropped images
+                        newLocation = seriesName + "_" + obj
+                        os.mkdir(newLocation)
+
+                        # create new trace files with shift domain origins
+                        print("\nCreating new domain origins file...")
+                        newTransformationsFile = open(newLocation + "/LOCAL_TRANSFORMATIONS.txt", "w")
+
+                        # shift the domain origins to bottom left corner of planned crop
+                        for sectionNum in sectionNums:
+
+                            # fix the coordinates to the picture
+                            inv_orig_trans = np.linalg.inv(coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1])) # get the inverse section transformation
+                            min_coords = np.matmul(inv_orig_trans, [[bounds_dict[sectionNum][0]],[bounds_dict[sectionNum][2]],[1]]) # transform the bottom left corner coordinates
+
+                            # translate coordinates to pixels
+                            pixPerMic = 1.0 / sectionInfo[sectionNum][2] # get image magnification
+                            xshift_pix = int((min_coords[0][0] - rad) * pixPerMic)
+                            if xshift_pix < 0:
+                                xshift_pix = 0
+                            yshift_pix = int((min_coords[1][0] - rad) * pixPerMic)
+                            if yshift_pix < 0:
+                                yshift_pix = 0
+
+                            # write the shifted origin to the transformations file
+                            newTransformationsFile.write("Section " + str(sectionNum) + "\n" +
+                                                         "xshift: " + str(xshift_pix) + "\n" +
+                                                         "yshift: " + str(yshift_pix) + "\n" +
+                                                         "Dtrans: 1 0 0 0 1 0\n")
+
+                        newTransformationsFile.close()
+
+                        print("LOCAL_TRANSFORMATIONS.txt has been stored.")
+                        print("Do NOT delete this file.")
+
+                        print("\nCropping images around bounds...")
                         
-                        # get the bounds coordinates in pixels
-                        inv_orig_trans = np.linalg.inv(coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1]))
-                        min_coords = np.matmul(inv_orig_trans, [[bounds_dict[sectionNum][0]],[bounds_dict[sectionNum][2]],[1]])
-                        max_coords = np.matmul(inv_orig_trans, [[bounds_dict[sectionNum][1]],[bounds_dict[sectionNum][3]],[1]])
+                        # crop each image
+                        counter = 0
+                        for sectionNum in sectionNums:
 
-                        # get the pixel coordinates for each corner of the crop
-                        left = int((min_coords[0][0] - rad) * pixPerMic)
-                        bottom = img_height - int((min_coords[1][0] - rad) * pixPerMic)
-                        right = int((max_coords[0][0] + rad) * pixPerMic)
-                        top = img_height - int((max_coords[1][0] + rad) * pixPerMic)
-                        
-                        # if crop exceeds image boundary, cut it off
-                        if left < 0: left = 0
-                        if right >= img_length: right = img_length-1
-                        if top < 0: top = 0
-                        if bottom >= img_height: bottom = img_height-1
+                            # get the name of the desired image file
+                            if images_in_dir:
+                                fileName = sectionInfo[sectionNum][3]
+                                filePath = fileName
+                            else:
+                                filePath = imageFiles[counter]
+                                fileName = filePath[filePath.rfind("/")+1:]
+                                counter += 1
 
-                        # crop the photo
-                        cropped = img.crop((left, top, right, bottom))
-                        cropped.save(newLocation + "/" + fileName)
-                        
-                        print("Saved!")
+                            print("\nWorking on " + fileName + "...")
+                            
+                            # open original image
+                            img = PILImage.open(filePath)
 
-                    print("\nCropping has run successfully!")
+                            # get image dimensions
+                            img_length, img_height = img.size
+                            
+                            # get magnification
+                            pixPerMic = 1.0 / sectionInfo[sectionNum][2]
+                            
+                            # get the bounds coordinates in pixels
+                            inv_orig_trans = np.linalg.inv(coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1]))
+                            min_coords = np.matmul(inv_orig_trans, [[bounds_dict[sectionNum][0]],[bounds_dict[sectionNum][2]],[1]])
+                            max_coords = np.matmul(inv_orig_trans, [[bounds_dict[sectionNum][1]],[bounds_dict[sectionNum][3]],[1]])
 
-                    print("\nSwitching to new crop...")
-                    switchToCrop(seriesName, obj)
+                            # get the pixel coordinates for each corner of the crop
+                            left = int((min_coords[0][0] - rad) * pixPerMic)
+                            bottom = img_height - int((min_coords[1][0] - rad) * pixPerMic)
+                            right = int((max_coords[0][0] + rad) * pixPerMic)
+                            top = img_height - int((max_coords[1][0] + rad) * pixPerMic)
+                            
+                            # if crop exceeds image boundary, cut it off
+                            if left < 0: left = 0
+                            if right >= img_length: right = img_length-1
+                            if top < 0: top = 0
+                            if bottom >= img_height: bottom = img_height-1
 
-                    print("Successfully set " + obj + " as the focus.")
+                            # crop the photo
+                            cropped = img.crop((left, top, right, bottom))
+                            cropped.save(newLocation + "/" + fileName)
+                            
+                            print("Saved!")
+
+                        print("\nCropping has run successfully!")
+
+                        print("\nSwitching to new crop...")
+                        switchToCrop(seriesName, obj)
+
+                        print("Successfully set " + obj + " as the focus.")
 
                 # if the user enters invalid coords
-                elif not not os.path.isdir(seriesName + "_" + newFocus) and master_choice == "2":
+                elif not os.path.isdir(seriesName + "_" + newFocus) and master_choice == "3":
                     print("\nThese coordinates do not exist.")
+
+            else:
+                print("\nPlease enter a valid response from the menu.")
 
             if master_choice != "": input("\nPress enter to continue.")
 

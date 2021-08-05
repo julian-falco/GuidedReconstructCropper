@@ -873,7 +873,7 @@ try:
                     print("Successfully reset focus to " + cropFocus + ".")
 
             # if switching to original
-            if master_choice == "1":
+            elif master_choice == "1":
                 
                 # if already on original, prompt user to change original transformation
                 if cropFocus == "":
@@ -886,7 +886,7 @@ try:
                     print("Successfully set the original series as the focus.")
 
             # if switching to crop
-            if master_choice == "2" or master_choice == "3" and isChunked:
+            elif master_choice == "2" or master_choice == "3" and isChunked:
 
                 # get the name of the desired object
                 newFocus = ""

@@ -651,6 +651,16 @@ def ynInput(inputStr):
         return True
     return False
 
+def clearScreen():
+  
+    # for windows
+    if name == 'nt':
+        _ = system('cls')
+  
+    # for mac and linux(here, os.name is 'posix')
+    else:
+        _ = system('clear')
+
 
 # MAIN P1: Ensuring that modules are installed in the correct place
 
@@ -819,6 +829,8 @@ try:
         
             # gather series info data
             seriesName, sectionNums = getSeriesInfo(seriesFileName)
+
+            clearScreen()
 
             print("\n----------------------------MENU----------------------------")
 
@@ -1132,8 +1144,8 @@ try:
             # section 0 is often the grid and does not get aligned
             trans_offset = intInput("\nWhat section does the transformation start on?: ") - startSection
         
-        # if the series does have an existing transformation, apply it
-        if isTrans:
+            # if the series does have an existing transformation, apply it
+            
             print("\nIdentifying and storing original transformations...")
 
             all_transformations = getNewTransformations(baseTransformations, micPerPix)

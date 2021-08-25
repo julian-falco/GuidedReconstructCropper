@@ -201,10 +201,10 @@ def getSeriesInfo(fileName):
     return seriesName, sectionNums
 
 
-def switchToOriginal(seriesName, objName):
-    """Switch focus to a cropped series from the original."""
+def switchToUncropped(seriesName, objName):
+    """Switch focus to the uncropped series from a cropped version."""
 
-    # check for transformations that deviate from the original alignment
+    # check for transformations that deviate from the global alignment
     iDtrans_dict = checkForRealignment(seriesName, objName)
 
     # open and read the transformation file
@@ -224,13 +224,13 @@ def switchToOriginal(seriesName, objName):
         elif "yshift" in line:
             yshift_pix = int(line.split()[1]) # get shifted origin
 
-        # transformation all the traces so that they match the original and save transformation data for cropped version    
+        # transform all the traces so that they match the global transformations and save transformation data for the cropped version    
         elif "Dtrans" in line:
             transformAllTraces(seriesName + "." + str(sectionNum),
                                iDtrans_dict[sectionNum], # transform all the traces by this matrix
                                -xshift_pix, -yshift_pix, "") # additionally, move domain and change image source
             
-            # store the transformation matrix going from original to cropped
+            # store the transformation matrix going from uncropped to cropped
             Dtrans = np.linalg.inv(iDtrans_dict[sectionNum])
             line = "Dtrans: "
             line += str(Dtrans[0,0]) + " "
@@ -246,7 +246,7 @@ def switchToOriginal(seriesName, objName):
             
 
 def switchToCrop(seriesName, objName):
-    """Switch focus to an original series from a cropped one."""
+    """Switch focus from an uncropped series to a cropped one."""
     
     # open transformation files
     localTrans = open(seriesName + "_" + objName + "/LOCAL_TRANSFORMATIONS.txt", "r")
@@ -259,8 +259,8 @@ def switchToCrop(seriesName, objName):
         if "Section" in line:
             sectionNums.append(int(line.split()[1]))
     
-    # save current alignment on original
-    saveOriginalTransformations(seriesName, sectionNums)
+    # save current alignment on uncropped version
+    saveGlobalTransformations(seriesName, sectionNums)
 
     # grab transformation data from each of the files
     for line in lines:
@@ -287,19 +287,19 @@ def switchToCrop(seriesName, objName):
 
     
 def checkForRealignment(seriesName, objName):
-    """Check for differences in domain alignment between cropped and original series."""
+    """Check for differences in domain alignment between cropped and uncropped series."""
 
     # open the two transformation files
-    origTransFile = open("ORIGINAL_TRANSFORMATIONS.txt", "r")
+    globalTransFile = open("GLOBAL_TRANSFORMATIONS.txt", "r")
     localTransFile = open(seriesName + "_" + objName + "/LOCAL_TRANSFORMATIONS.txt", "r")
 
     # store trasnformations
     iDtransList = {}
 
-    # read through local and original transformations simultaneously
+    # read through local and global transformations simultaneously
     for localLine in localTransFile.readlines():
         if "Section" in localLine:
-            origTransFile.readline() # skip line in original file
+            globalTransFile.readline() # skip line in global transformations file
             sectionNum = int(localLine.split()[1]) # get the section number
             
             # get new domain transformation info for this section
@@ -310,42 +310,42 @@ def checkForRealignment(seriesName, objName):
         elif "xshift" in localLine:
             xshift = int(localLine.split()[1]) * sectionInfo[2] # get origin shift
 
-            # get original domain transformation info for this section
-            origLine = origTransFile.readline() 
-            orig_xcoef = [float(x) for x in origLine.split()[1:4]]
+            # get global domain transformation info for this section
+            globalLine = globalTransFile.readline() 
+            global_xcoef = [float(x) for x in globalLine.split()[1:4]]
             
         elif "yshift" in localLine:
             yshift = int(localLine.split()[1]) * sectionInfo[2] # get origin shift
 
-            # get original domain transformation info for this section
-            origLine = origTransFile.readline()
-            orig_ycoef = [float(y) for y in origLine.split()[1:4]]
+            # get global domain transformation info for this section
+            globalLine = globalTransFile.readline()
+            global_ycoef = [float(y) for y in globalLine.split()[1:4]]
 
         # check for realignment using the two matrices
         elif "Dtrans" in localLine:
             
             # set up the two matrices
             local_matrix = coefToMatrix(local_xcoef, local_ycoef) # new transformation
-            orig_matrix = coefToMatrix(orig_xcoef, orig_ycoef) # original transformation
+            global_matrix = coefToMatrix(global_xcoef, global_ycoef) # global transformation
 
             # transform the shifted origin by ONLY the shear/stretch components of the new transformation
             transformedShiftCoords = np.matmul(local_matrix[:2,:2], [[xshift],[yshift]])
 
-            # cancel out xshift and yshift from new transformation to match original
+            # cancel out xshift and yshift from new transformation to match global
             local_matrix[0][2] -= transformedShiftCoords[0][0]
             local_matrix[1][2] -= transformedShiftCoords[1][0]
             
             # get the "difference" between the two matrices and store the result
-            iD_matrix = np.matmul(orig_matrix, np.linalg.inv(local_matrix))
+            iD_matrix = np.matmul(global_matrix, np.linalg.inv(local_matrix))
             iDtransList[sectionNum] = iD_matrix
         
-    origTransFile.close()
+    globalTransFile.close()
     localTransFile.close()
 
     return iDtransList
 
-def changeOriginalTransformations(seriesName, sectionNums, newTransFile, startTrans):
-    """Change the original transformation of a series based on a .dat file"""
+def changeGlobalTransformations(seriesName, sectionNums, newTransFile, startTrans):
+    """Change the global transformation of a series based on a .dat file"""
 
     # get transformations for all sections
     sectionInfo = {}
@@ -377,14 +377,14 @@ def changeOriginalTransformations(seriesName, sectionNums, newTransFile, startTr
         
         i += 1
 
-    # change the original transformations file
-    origTransFile = open("ORIGINAL_TRANSFORMATIONS.txt", "w")
+    # change the global transformations file
+    globalTransFile = open("GLOBAL_TRANSFORMATIONS.txt", "w")
     i = 0
     for sectionNum in sectionNums:
         if i - trans_offset < 0:
 
             # if there is no transformation data for the section, keep the old transformation
-            origTransFile.write("Section " + str(sectionNum) + "\n" +
+            globalTransFile.write("Section " + str(sectionNum) + "\n" +
                                 "xcoef: " + str(sectionInfo[sectionNum][0][0]) +
                                 " " + str(sectionInfo[sectionNum][0][1]) +
                                 " " + str(sectionInfo[sectionNum][0][2]) + " 0 0 0\n" +
@@ -394,15 +394,15 @@ def changeOriginalTransformations(seriesName, sectionNums, newTransFile, startTr
         else:
             itransMatrix = np.linalg.inv(new_trans[i - trans_offset]) # get the inverse
 
-            # write the new transformation data to the original transformations file
-            origTransFile.write("Section " + str(sectionNum) + "\n" +
+            # write the new transformation data to the global transformations file
+            globalTransFile.write("Section " + str(sectionNum) + "\n" +
                                 "xcoef: " + str(itransMatrix[0][2]) + " " + str(itransMatrix[0][0]) +
                                 " " + str(itransMatrix[0][1]) + " 0 0 0\n" +
                                 "ycoef: " + str(itransMatrix[1][2]) + " " + str(itransMatrix[1][0]) +
                                 " " + str(itransMatrix[1][1]) + " 0 0 0\n")
         i += 1
     
-    origTransFile.close()
+    globalTransFile.close()
         
 
 def getNewTransformations(baseTransformations, micPerPix):
@@ -515,9 +515,9 @@ def transformAllTraces(fileName, transformation, xshift_pix, yshift_pix, objName
         # if iterator is on the image source line
         elif i == domainIndex - 1:
             imageFile = line.split('"')[1] # get the current image source
-            if "/" in imageFile and objName == "": # if image source is focused on a crop and switching to original
+            if "/" in imageFile and objName == "": # if image source is focused on a crop and switching to uncropped
                 imageFile = imageFile[imageFile.find("/")+1:]
-            elif not "/" in imageFile and objName != "": # if image source is set to original and switching to a crop
+            elif not "/" in imageFile and objName != "": # if image source is set to uncropped and switching to a crop
                 imageFile = seriesName + "_" + objName + "/" + imageFile
             # otherwise, don't mess with the image source
                 
@@ -582,11 +582,11 @@ def getCropFocus(sectionFileName, seriesName):
     return cropFocus
 
 
-def saveOriginalTransformations(seriesName, sectionNums):
-    """Save the current set of trasnformations to the ORIGINAL_TRANSFORMATIONS.txt file"""
+def saveGlobalTransformations(seriesName, sectionNums):
+    """Save the current set of trasnformations to the GLOBAL_TRANSFORMATIONS.txt file"""
 
-    # open the original transformations file
-    transformationsFile = open("ORIGINAL_TRANSFORMATIONS.txt", "w")
+    # open the global transformations file
+    transformationsFile = open("GLOBAL_TRANSFORMATIONS.txt", "w")
 
     for sectionNum in sectionNums:
 
@@ -839,16 +839,16 @@ try:
             if cropFocus:
                 print("\nThis series is currently focused on: " + cropFocus)
             else:
-                print("\nThis series is currently set to the original set of images.")
+                print("\nThis series is currently set to the uncropped set of images.")
 
             isChunked = os.path.isdir(seriesName + "_0,0")
 
             print("\nPlease select from the following options:")
-            print("1: Switch to the original set of images")
+            print("1: Switch to the uncropped set of images")
             print("2: Switch to set of images cropped around an object")
             if isChunked:
                 print("3: Switch to a specific chunk")
-            print("0: Change the original alignment")
+            print("0: Change the global alignment")
 
             master_choice = input("\nEnter your menu choice (or press enter to exit): ")
 
@@ -856,9 +856,9 @@ try:
             if master_choice == "0":
 
                 if cropFocus != "":
-                    print("\nSwitching back to original series...")
-                    switchToOriginal(seriesName, cropFocus)
-                    print("Successfully set the original series as the focus.")
+                    print("\nSwitching back to the uncropped series...")
+                    switchToUncropped(seriesName, cropFocus)
+                    print("Successfully set the uncropped series as the focus.")
 
                 input("\nPress enter to select the file containing the transformations.")
                 
@@ -871,11 +871,11 @@ try:
                                                   ("All Files","*.*")))
                 
                 # section 0 is often the grid and does not get aligned
-                startTrans = intInput("\nWhat section does the transformation start on?: ")
+                startTrans = intInput("\nWhat section do the transformations start on?: ")
 
-                print("\nChanging original transformations...")
+                print("\nChanging global transformations...")
                 
-                changeOriginalTransformations(seriesName, sectionNums, newTransFile, startTrans)
+                changeGlobalTransformations(seriesName, sectionNums, newTransFile, startTrans)
 
                 print("Completed!")
 
@@ -884,18 +884,18 @@ try:
                     switchToCrop(seriesName, cropFocus)
                     print("Successfully reset focus to " + cropFocus + ".")
 
-            # if switching to original
+            # if switching to uncropped
             elif master_choice == "1":
                 
-                # if already on original, prompt user to change original transformation
+                # if already on uncropped
                 if cropFocus == "":
-                    print("\nThe original series is already set as the focus.")                                    
+                    print("\nThe uncropped series is already set as the focus.")                                    
 
-                # switch to original if not
+                # switch to uncropped if not
                 else: 
-                    print("\nSwitching to original series...")
-                    switchToOriginal(seriesName, cropFocus)
-                    print("Successfully set the original series as the focus.")
+                    print("\nSwitching to the uncropped series...")
+                    switchToUncropped(seriesName, cropFocus)
+                    print("Successfully set the uncropped series as the focus.")
 
             # if switching to crop
             elif master_choice == "2" or master_choice == "3" and isChunked:
@@ -918,11 +918,11 @@ try:
                 # if switching to an existing crop
                 elif os.path.isdir(seriesName + "_" + newFocus):
 
-                    # switch to the original crop if not already on
+                    # switch to the uncropped version if not already on
                     if cropFocus != "":
-                        print("\nSwitching to original crop focus to prepare...")
-                        switchToOriginal(seriesName, cropFocus)
-                        print("Successfully set the original series as the focus.")
+                        print("\nSwitching to the uncropped series to prepare...")
+                        switchToUncropped(seriesName, cropFocus)
+                        print("Successfully set the uncropped series as the focus.")
                     
                     print("\nSwitching to " + newFocus + "...")
                     switchToCrop(seriesName, newFocus)
@@ -935,11 +935,11 @@ try:
                     
                     obj = newFocus # set obj variable as newFocus variable
 
-                    # switch to the original crop focus if not on already
+                    # switch to the uncropped version if not on already
                     if cropFocus != "":
-                        print("\nSwitching to original focus...")
-                        switchToOriginal(seriesName, cropFocus)
-                        print("Switched to original focus.")
+                        print("\nSwitching to uncropped series...")
+                        switchToUncropped(seriesName, cropFocus)
+                        print("Switched to uncropped series.")
                     
                     print("\nLocating the object...")
 
@@ -1006,8 +1006,8 @@ try:
                         for sectionNum in sectionNums:
 
                             # fix the coordinates to the picture
-                            inv_orig_trans = np.linalg.inv(coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1])) # get the inverse section transformation
-                            min_coords = np.matmul(inv_orig_trans, [[bounds_dict[sectionNum][0]],[bounds_dict[sectionNum][2]],[1]]) # transform the bottom left corner coordinates
+                            inv_global_trans = np.linalg.inv(coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1])) # get the inverse section transformation
+                            min_coords = np.matmul(inv_global_trans, [[bounds_dict[sectionNum][0]],[bounds_dict[sectionNum][2]],[1]]) # transform the bottom left corner coordinates
 
                             # translate coordinates to pixels
                             pixPerMic = 1.0 / sectionInfo[sectionNum][2] # get image magnification
@@ -1056,9 +1056,9 @@ try:
                             pixPerMic = 1.0 / sectionInfo[sectionNum][2]
                             
                             # get the bounds coordinates in pixels
-                            inv_orig_trans = np.linalg.inv(coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1]))
-                            min_coords = np.matmul(inv_orig_trans, [[bounds_dict[sectionNum][0]],[bounds_dict[sectionNum][2]],[1]])
-                            max_coords = np.matmul(inv_orig_trans, [[bounds_dict[sectionNum][1]],[bounds_dict[sectionNum][3]],[1]])
+                            inv_global_trans = np.linalg.inv(coefToMatrix(sectionInfo[sectionNum][0], sectionInfo[sectionNum][1]))
+                            min_coords = np.matmul(inv_global_trans, [[bounds_dict[sectionNum][0]],[bounds_dict[sectionNum][2]],[1]])
+                            max_coords = np.matmul(inv_global_trans, [[bounds_dict[sectionNum][1]],[bounds_dict[sectionNum][3]],[1]])
 
                             # get the pixel coordinates for each corner of the crop
                             left = int((min_coords[0][0] - rad) * pixPerMic)
@@ -1127,12 +1127,31 @@ try:
         overlap = floatInput("How many microns of overlap should there be between chunks?: ")
         
         # get series information
-        startSection = intInput("\nWhat number should the sections start on?: ")
-        micPerPix = floatInput("How many microns per pixel are there for this series?: ")
+        startSection = intInput("\nWhat section number would you like the series to start on?\n" +
+                                "(default is 0 when calibration grid is included): ")
         sectionThickness = floatInput("What would you like to set as the section thickness? (in microns): ")
 
-        # check if there is an existing transformation file
-        isTrans = ynInput("\nIs there an existing transformation file for this series? (y/n): ")
+        # check if series has already been calibrated
+        isCalibrated = ynInput("Has this series been calibrated? (y/n): ")
+
+        if isCalibrated:
+            
+            micPerPix = floatInput("How many microns per pixel are there for this series?: ")
+
+            # check if there is an existing transformation file
+            isTrans = ynInput("\nIs there an existing transformation file for this series? (y/n): ")
+
+        else:
+
+            micPerPix = 0.00254
+            print("\nMicrons per pixel has been set to default value of 0.00254.")
+            
+            isTrans = False
+            print("\nIf you wish to apply a set of existing transformations to this series, please calibrate it first.")
+            print("You will be able to set the global transformations using this program after calibrating the series in Reconstruct.")
+
+            input("\nPress enter to continue.")
+            
 
         # get the transformation file if needed
         if isTrans:
@@ -1142,41 +1161,41 @@ try:
                                               ("All Files","*.*")))
 
             # section 0 is often the grid and does not get aligned
-            trans_offset = intInput("\nWhat section does the transformation start on?: ") - startSection
+            trans_offset = intInput("\nWhat section do the transformations start on?: ") - startSection
         
             # if the series does have an existing transformation, apply it
             
-            print("\nIdentifying and storing original transformations...")
+            print("\nIdentifying and storing global transformations...")
 
             all_transformations = getNewTransformations(baseTransformations, micPerPix)
 
-            origTransFile = open("ORIGINAL_TRANSFORMATIONS.txt", "w")
+            globalTransFile = open("GLOBAL_TRANSFORMATIONS.txt", "w")
             for i in range(len(imageFiles)):
                 if i - trans_offset < 0:
-                    origTransFile.write("Section " + str(i + startSection) + "\n" +
+                    globalTransFile.write("Section " + str(i + startSection) + "\n" +
                                           "xcoef: 0 1 0 0 0 0\n" +
                                           "ycoef: 0 0 1 0 0 0\n")
                 else:
                     itransMatrix = np.linalg.inv(all_transformations[i - trans_offset]) # get the inverse
 
-                    # write the transformation data to the original transformations file
-                    origTransFile.write("Section " + str(i + startSection) + "\n" +
+                    # write the transformation data to the global transformations file
+                    globalTransFile.write("Section " + str(i + startSection) + "\n" +
                                         "xcoef: " + str(itransMatrix[0][2]) + " " + str(itransMatrix[0][0]) +
                                         " " + str(itransMatrix[0][1]) + " 0 0 0\n" +
                                         "ycoef: " + str(itransMatrix[1][2]) + " " + str(itransMatrix[1][0]) +
                                         " " + str(itransMatrix[1][1]) + " 0 0 0\n")
-            origTransFile.close()
+            globalTransFile.close()
             
         # if the series does not have an existing transformation file, then set all transformations to identity
         else:
-            origTransFile = open("ORIGINAL_TRANSFORMATIONS.txt", "w")
+            globalTransFile = open("GLOBAL_TRANSFORMATIONS.txt", "w")
             for i in range(len(imageFiles)):
-                origTransFile.write("Section " + str(i + startSection) + "\n" +
+                globalTransFile.write("Section " + str(i + startSection) + "\n" +
                                           "xcoef: 0 1 0 0 0 0\n" +
                                           "ycoef: 0 0 1 0 0 0\n")
-            origTransFile.close()
+            globalTransFile.close()
 
-        print("ORIGINAL_TRANSFORMATIONS.txt has been stored.")
+        print("\nGLOBAL_TRANSFORMATIONS.txt has been stored.")
         print("Do NOT delete this file.")
 
         # create each folder
@@ -1286,7 +1305,7 @@ try:
         blankSectionFile = blankSectionFile.replace("[IMAGE_LENGTH]", str(int(img_length_max)))
         blankSectionFile = blankSectionFile.replace("[IMAGE_HEIGHT]", str(int(img_height_max)))
 
-        origTrans = open("ORIGINAL_TRANSFORMATIONS.txt", "r")
+        globalTrans = open("GLOBAL_TRANSFORMATIONS.txt", "r")
 
         # iterate through each section and create the section file
         for i in range(len(imageFiles)):
@@ -1296,11 +1315,11 @@ try:
             
             newSectionFile = open(seriesName + "." + str(i + startSection), "w")
 
-            # retrieve original transformations
-            origTrans.readline()
-            xcoef_data = origTrans.readline()
+            # retrieve global transformations
+            globalTrans.readline()
+            xcoef_data = globalTrans.readline()
             xcoef_str = xcoef_data[xcoef_data.find(":")+1 : xcoef_data.find("\n")]
-            ycoef_data = origTrans.readline()
+            ycoef_data = globalTrans.readline()
             ycoef_str = ycoef_data[ycoef_data.find(":")+1 : ycoef_data.find("\n")]
 
             # replace section-specific unknowns with known info
@@ -1664,7 +1683,7 @@ try:
         newSeriesFile = open(seriesName + ".ser", "w")
         newSeriesFile.write(blankSeriesFile)
         newSeriesFile.close()
-        origTrans.close()
+        globalTrans.close()
         print("Completed!")
 
         print("\nSwitching focus to 0,0...")

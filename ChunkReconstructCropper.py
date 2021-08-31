@@ -670,6 +670,7 @@ try:
     # default modules
     import sys
     import os
+    from datetime import datetime
 
     # boolean to keep track if module needs to be imported
     needs_import = False
@@ -859,11 +860,47 @@ if seriesFileName:
             # section 0 is often the grid and does not get aligned
             startTrans = intInput("\nWhat section do the transformations start on?: ")
 
+            # save existing transformations and mark with date and time
+            print("\nSaving existing transformations...")
+
+            time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+            fileName = "SAVED_GLOBAL_TRANSFORMATIONS_" + time_str + ".txt"
+
+            saved_trans = open(fileName, "w")
+            global_trans = open("GLOBAL_TRANSFORMATIONS.txt", "r")
+
+            for line in global_trans.readlines():
+                saved_trans.write(line)
+
+            saved_trans.close()
+            global_trans.close()
+
+            print(fileName + " has been saved.")            
+
             print("\nChanging global transformations...")
             
             changeGlobalTransformations(seriesName, sectionNums, newTransFile, startTrans)
 
             print("Completed!")
+
+            reset_local_trans = ynInput("\nWould you like to reset all of the local transformations? (y/n): ")
+
+            if reset_local_trans:
+                for path in os.listdir():
+                    if os.path.isdir(path) and path.startswith(seriesName + "_"):
+                        local_trans = open(path + "/LOCAL_TRANSFORMATIONS.txt", "r")
+                        lines = local_trans.readlines()
+                        local_trans.close()
+                        
+                        new_trans = open(path + "/LOCAL_TRANSFORMATIONS.txt", "w")
+                        for line in lines:
+                            if line.startswith("Dtrans:"):
+                                line = "Dtrans: 1 0 0 0 1 0\n"
+                            new_trans.write(line)
+                        new_trans.close()
+
+            print("\nLocal transformations have been reset.")
 
             if cropFocus != "":
                 print("\nSwitching back to previous focus...")

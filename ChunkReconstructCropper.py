@@ -824,7 +824,7 @@ if seriesFileName:
         # find and output the current crop focus
         cropFocus = getCropFocus(seriesName + "." + str(sectionNums[0]), seriesName)
         if cropFocus:
-            print("\nThis series is currently focused on: " + cropFocus)
+            print("\nThis series is currently focused on crop: " + cropFocus)
         else:
             print("\nThis series is currently set to the uncropped set of images.")
 
@@ -835,7 +835,7 @@ if seriesFileName:
         print("2: Switch to set of images cropped around an object")
         if isChunked:
             print("3: Switch to a specific chunk")
-        print("0: Change the global alignment")
+        print("0: Import transformations")
 
         master_choice = input("\nEnter your menu choice (or press enter to exit): ")
 
@@ -1149,8 +1149,8 @@ else:
     overlap = floatInput("How many microns of overlap should there be between chunks?: ")
     
     # get series information
-    startSection = intInput("\nWhat section number would you like the series to start on?\n" +
-                            "(default is 0 when calibration grid is included): ")
+    startSection = intInput("\nWhat section number would you like your new series to start on?\n" +
+                            "(when calibration grid is included, 0 is the standard): ")
     sectionThickness = floatInput("\nWhat would you like to set as the section thickness? (in microns): ")
 
     # check if series has already been calibrated
@@ -1170,7 +1170,7 @@ else:
         
         isTrans = False
         print("\nIf you wish to apply a set of existing transformations to this series, please calibrate it first.")
-        print("If you have a set of transformations, you will be able to apply them using this program after calibrating the series in Reconstruct.")
+        print("You will be able to apply them using this program after calibrating the series in Reconstruct.")
 
         input("\nPress enter to continue.")
         

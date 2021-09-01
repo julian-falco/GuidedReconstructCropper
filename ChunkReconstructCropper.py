@@ -954,7 +954,7 @@ if seriesFileName:
             # if crop does not exist, make the guided crop
             elif not os.path.isdir(seriesName + "_" + newFocus) and master_choice == "2":
                 print("\nThis crop does not exist.")
-                input("Press enter to create a new crop for this object (press Ctrl+c to exit).")
+                input("Press enter to create a new crop for this object.")
                 
                 obj = newFocus # set obj variable as newFocus variable
 
@@ -1114,7 +1114,7 @@ if seriesFileName:
         elif master_choice != "":
             print("\nPlease enter a valid response from the menu.")
 
-        if master_choice != "": input("\nPress enter to continue.")
+        if master_choice != "": input("\nPress enter to return to the menu.")
 
 # cropping a new set of images if there is no detected series file
 else:
@@ -1172,7 +1172,7 @@ else:
         print("\nIf you wish to apply a set of existing transformations to this series, please calibrate it first.")
         print("You will be able to apply them using this program after calibrating the series in Reconstruct.")
 
-        input("\nPress enter to continue.")
+        input("\nPress enter to crop the images.")
         
 
     # get the transformation file if needed

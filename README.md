@@ -1,4 +1,4 @@
-# GuidedReconstructCropper
+# ReconstructCropper
 
 This program is intended for use with the RECONSTRUCT software developed by the Harris Lab.
 

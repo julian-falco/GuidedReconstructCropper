@@ -344,7 +344,7 @@ def checkForRealignment(seriesName, objName):
 
     return iDtransList
 
-def changeGlobalTransformations(seriesName, sectionNums, newTransFile, startTrans):
+def changeGlobalTransformations(seriesName, sectionNums, new_trans, startTrans):
     """Change the global transformation of a series based on a .dat file"""
 
     # get transformations for all sections
@@ -356,9 +356,6 @@ def changeGlobalTransformations(seriesName, sectionNums, newTransFile, startTran
             micPerPix = sectionInfo[sectionNum][2]
             trans_offset = startTrans - sectionNum
             firstSection = False
-
-    # get new transformations
-    new_trans = getNewTransformations(newTransFile, micPerPix)
 
     # go through each section and get the change transformation
     all_Dtrans = {}
@@ -405,7 +402,7 @@ def changeGlobalTransformations(seriesName, sectionNums, newTransFile, startTran
     globalTransFile.close()
         
 
-def getNewTransformations(baseTransformations, micPerPix):
+def getNewTransformations(baseTransformations, micPerPix, is_from_SWIFT, img_height):
     """Returns all of the transformation matrices from a .dat file"""
 
     # store file information
@@ -424,6 +421,9 @@ def getNewTransformations(baseTransformations, micPerPix):
         transMatrix = [[matrixLine[0],matrixLine[1],matrixLine[2]],
                        [matrixLine[3],matrixLine[4],matrixLine[5]],
                        [0,0,1]]
+        
+        if is_from_SWIFT:
+            transMatrix = matrix2recon(transMatrix, img_height)
 
         # convert the translation components so that fit microns
         transMatrix[0][2] *= micPerPix
@@ -431,7 +431,31 @@ def getNewTransformations(baseTransformations, micPerPix):
 
         all_transformations.append(transMatrix)
 
-    return all_transformations   
+    return all_transformations
+
+
+### MICHAEL CHIRILLO'S FUNCTION ###
+def matrix2recon(transform, dim):
+    """Change frame of reference for SWiFT transforms to work in Reconstruct."""
+    new_transform = transform.copy()
+
+    # Calculate bottom left corner translation
+    BL_corner = np.array([[0], [dim], [1]])  # BL corner from image height in px
+    BL_translation = np.matmul(transform, BL_corner) - BL_corner
+
+    # Add BL corner translation to SWiFT matrix
+    new_transform[0][2] = round(BL_translation[0][0], 5)  # x translation
+    new_transform[1][2] = round(BL_translation[1][0], 5)  # y translation
+
+    # Flip y axis - change signs a2, b1, and b3
+    new_transform[0][1] *= -1  # a2
+    new_transform[1][0] *= -1  # b1
+    new_transform[1][2] *= -1  # b3
+
+    # Stop-gap measure for Reconchonky
+    new_transform = np.linalg.inv(new_transform)
+
+    return new_transform
 
 
 def transformAllTraces(fileName, transformation, xshift_pix, yshift_pix, objName):
@@ -797,7 +821,7 @@ new_dir = []
 while not new_dir:
     new_dir = askdirectory(title="Select Folder")
 
-print("New working directory: " + new_dir)
+print("Working directory: " + new_dir)
 os.chdir(new_dir)
     
 # locate the series file and get series name if found
@@ -856,6 +880,8 @@ if seriesFileName:
             newTransFile = askopenfilename(title="Select Transformation File",
                                    filetypes=(("Data File", "*.dat"),
                                               ("All Files","*.*")))
+
+            is_from_SWIFT = ynInput("\nIs this from SWIFT output? (y/n): ")
             
             # section 0 is often the grid and does not get aligned
             startTrans = intInput("\nWhat section do the transformations start on?: ")
@@ -876,11 +902,25 @@ if seriesFileName:
             saved_trans.close()
             global_trans.close()
 
-            print(fileName + " has been saved.")            
+            print(fileName + " has been saved.")
 
-            print("\nChanging global transformations...")
-            
-            changeGlobalTransformations(seriesName, sectionNums, newTransFile, startTrans)
+            # get image height if needed
+            last_section_info = getSectionInfo(seriesName + "." + str(sectionNums[-1]))
+            micPerPix = last_section_info[2]
+            img_height = 0
+            if is_from_SWIFT:
+                try:
+                    last_sec_img = PILImage.open(last_section_info[3]) # open the last section image
+                    img_height = last_sec_img.size[1] # get the last section image height
+                except:
+                    print("\nUncropped images not found.")
+                    img_height = intInput("Please enter the height (in pixels) of the UNCROPPED images: ")
+
+            new_trans = getNewTransformations(newTransFile, micPerPix, is_from_SWIFT, img_height)
+
+            # apply new transformations
+            print("\nChanging global transformations...")       
+            changeGlobalTransformations(seriesName, sectionNums, new_trans, startTrans)
 
             print("Completed!")
 
@@ -1162,6 +1202,18 @@ else:
 
         # check if there is an existing transformation file
         isTrans = ynInput("\nIs there an existing transformation file for this series? (y/n): ")
+        
+        if isTrans:
+            input("Press enter to select the file containing the transformations.")
+            baseTransformations = askopenfilename(title="Select Transformation File",
+                                   filetypes=(("Data File", "*.dat"),
+                                              ("All Files","*.*")))
+
+            # check if transformations are meant for Reconstruct or SWIFT output
+            is_from_SWIFT = ynInput("\nIs this from SWIFT output? (y/n): ")
+
+            # section 0 is often the grid and does not get aligned
+            trans_offset = intInput("\nWhat section do the transformations start on?: ") - startSection
 
     else:
 
@@ -1173,52 +1225,6 @@ else:
         print("You will be able to apply them using this program after calibrating the series in Reconstruct.")
 
         input("\nPress enter to crop the images.")
-        
-
-    # get the transformation file if needed
-    if isTrans:
-        input("Press enter to select the file containing the transformations.")
-        baseTransformations = askopenfilename(title="Select Transformation File",
-                               filetypes=(("Data File", "*.dat"),
-                                          ("All Files","*.*")))
-
-        # section 0 is often the grid and does not get aligned
-        trans_offset = intInput("\nWhat section do the transformations start on?: ") - startSection
-    
-        # if the series does have an existing transformation, apply it
-        
-        print("\nIdentifying and storing global transformations...")
-
-        all_transformations = getNewTransformations(baseTransformations, micPerPix)
-
-        globalTransFile = open("GLOBAL_TRANSFORMATIONS.txt", "w")
-        for i in range(len(imageFiles)):
-            if i - trans_offset < 0:
-                globalTransFile.write("Section " + str(i + startSection) + "\n" +
-                                      "xcoef: 0 1 0 0 0 0\n" +
-                                      "ycoef: 0 0 1 0 0 0\n")
-            else:
-                itransMatrix = np.linalg.inv(all_transformations[i - trans_offset]) # get the inverse
-
-                # write the transformation data to the global transformations file
-                globalTransFile.write("Section " + str(i + startSection) + "\n" +
-                                    "xcoef: " + str(itransMatrix[0][2]) + " " + str(itransMatrix[0][0]) +
-                                    " " + str(itransMatrix[0][1]) + " 0 0 0\n" +
-                                    "ycoef: " + str(itransMatrix[1][2]) + " " + str(itransMatrix[1][0]) +
-                                    " " + str(itransMatrix[1][1]) + " 0 0 0\n")
-        globalTransFile.close()
-        
-    # if the series does not have an existing transformation file, then set all transformations to identity
-    else:
-        globalTransFile = open("GLOBAL_TRANSFORMATIONS.txt", "w")
-        for i in range(len(imageFiles)):
-            globalTransFile.write("Section " + str(i + startSection) + "\n" +
-                                      "xcoef: 0 1 0 0 0 0\n" +
-                                      "ycoef: 0 0 1 0 0 0\n")
-        globalTransFile.close()
-
-    print("\nGLOBAL_TRANSFORMATIONS.txt has been stored.")
-    print("Do NOT delete this file.")
 
     # create each folder
     print("\nCreating folders...")
@@ -1278,8 +1284,6 @@ else:
 
         print("Completed!")
 
-    print("\nStoring local transformation data...")
-
     # iterate through each of the chunks to create the local transformations file
     for x in range(xchunks):
         for y in range(ychunks):
@@ -1296,7 +1300,41 @@ else:
                                              "Dtrans: 1 0 0 0 1 0\n")
             newTransformationsFile.close()
 
-    print("LOCAL_TRANSFORMATIONS.txt has been stored in each folder.")
+    print("\nLOCAL_TRANSFORMATIONS.txt has been stored in each folder.")
+    print("Do NOT delete this file.")
+
+    # if the series does have an existing transformation, apply it
+    if isTrans:
+
+        all_transformations = getNewTransformations(baseTransformations, micPerPix, is_from_SWIFT, img_height_max)
+
+        globalTransFile = open("GLOBAL_TRANSFORMATIONS.txt", "w")
+        for i in range(len(imageFiles)):
+            if i - trans_offset < 0:
+                globalTransFile.write("Section " + str(i + startSection) + "\n" +
+                                      "xcoef: 0 1 0 0 0 0\n" +
+                                      "ycoef: 0 0 1 0 0 0\n")
+            else:
+                itransMatrix = np.linalg.inv(all_transformations[i - trans_offset]) # get the inverse
+
+                # write the transformation data to the global transformations file
+                globalTransFile.write("Section " + str(i + startSection) + "\n" +
+                                    "xcoef: " + str(itransMatrix[0][2]) + " " + str(itransMatrix[0][0]) +
+                                    " " + str(itransMatrix[0][1]) + " 0 0 0\n" +
+                                    "ycoef: " + str(itransMatrix[1][2]) + " " + str(itransMatrix[1][0]) +
+                                    " " + str(itransMatrix[1][1]) + " 0 0 0\n")
+        globalTransFile.close()
+        
+    # if the series does not have an existing transformation file, then set all transformations to identity
+    else:
+        globalTransFile = open("GLOBAL_TRANSFORMATIONS.txt", "w")
+        for i in range(len(imageFiles)):
+            globalTransFile.write("Section " + str(i + startSection) + "\n" +
+                                      "xcoef: 0 1 0 0 0 0\n" +
+                                      "ycoef: 0 0 1 0 0 0\n")
+        globalTransFile.close()
+
+    print("\nGLOBAL_TRANSFORMATIONS.txt has been stored.")
     print("Do NOT delete this file.")
 
     print("\nCreating new section and series files...")

@@ -748,7 +748,9 @@ try:
     else:
 
         #ask user if they want to direct the program to the modules
-        directing = ynInput("Would you like to find the site-packages folder containing the required modules? (y/n): ")
+        print("\nWould you like to find the site-packages folder containing the required modules? (y/n)")
+        directing = ynInput("(entering 'n' will automatically download the needed modules): ")
+
         
         if directing:
             site_packages_dir = input("Please paste the path for the site-packages directory containing the required modules.")
